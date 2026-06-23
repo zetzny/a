@@ -109,7 +109,26 @@ mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot уже примонти�
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots уже примонтирован или занят"
 
 echo "✅ Настройка fstab и структуры Btrfs для Snapper завершена успешно!"
+MAKEPKG_CONF="/etc/makepkg.conf"
 
+echo "=== изменение настроек сборки makepkg ($MAKEPKG_CONF) ==="
+if grep -q "MAKEFLAGS=" "$MAKEPKG_CONF"; then
+    echo "➜ Настраиваем многопоточную сборку (MAKEFLAGS)..."
+    sed -i 's/^#\?MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' "$MAKEPKG_CONF"
+fi
+
+
+if grep -q "CFLAGS=" "$MAKEPKG_CONF"; then
+    echo "➜ Включаем оптимизацию под текущий процессор (-march=native)..."
+    
+    
+    sed -i 's/^#CFLAGS=/CFLAGS=/' "$MAKEPKG_CONF"
+    sed -i 's/^#CXXFLAGS=/CXXFLAGS=/' "$MAKEPKG_CONF"
+    
+
+    sed -i 's/-march=[a-zA-Z0-9_-]*/-march=native/g' "$MAKEPKG_CONF"
+    sed -i 's/-mtune=[a-zA-Z0-9_-]*/-mtune=native/g' "$MAKEPKG_CONF"
+fi
 echo "=== Включение multilib ==="
 
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
@@ -381,9 +400,7 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
 else
     echo "Steam Workshop пропущен"
 fi
-
-echo
-echo "=== Конфигурация ~/.bashrc ==="
+echo ""
 
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
@@ -547,7 +564,7 @@ rollback() {
     echo "CONFIRM" | sudo snapper-rollback "$next"
 }
 
-nmem() {
+mem() {
     echo "═══════════════════════════════════════"
     echo "  📊 MEMORY STATUS"
     echo "═══════════════════════════════════════"
@@ -669,7 +686,7 @@ rainbow_user() {
 # Генерируем имя один раз при входе в терминал
 EXPORTED_USER=$(rainbow_user)
 
-# Собираем чистый PS1. Ему больше не нужны костыли экранирования функций!
+
 PS1="[\[\033[1;31m\]\h\[\033[0m\]@${EXPORTED_USER} \[\033[1;32m\]\W\[\033[0m\]]\$ "
 
 [[ -r /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
