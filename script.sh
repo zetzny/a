@@ -51,7 +51,7 @@ if [ ! -d "$MNT_ROOT/@snapshots" ]; then
     btrfs subvolume create "$MNT_ROOT/@snapshots"
 fi
 
-# 3. Настраиваем Snapper CONFIG
+
 if [ ! -f "/etc/snapper/configs/root" ]; then
     echo "➜ Создаем конфигурацию Snapper..."
     # Если папка /.snapshots осталась от старых попыток и это обычная папка, сносим её
@@ -134,17 +134,6 @@ echo "=== Включение multilib ==="
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
-
-echo
-echo "=== Обновление системы ==="
-
-pacman -Syu --noconfirm
-
-echo
-echo "=== Определение ядра ==="
-
-
-echo
 echo
 echo "=== Установка базовых пакетов ==="
 
@@ -156,13 +145,7 @@ BASE_PKGS=(
     steam rust python-pip cmake dotnet-host dotnet-targeting-pack dotnet-runtime dotnet-sdk
 )
 
-# Устанавливаем всё официальное одной чистой командой
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
-
-echo
-
-
-echo
 echo "=== Настройка локалей ==="
 
 sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
@@ -195,7 +178,7 @@ else
     echo "yay уже установлен"
 fi
 
-echo
+
 echo "=== Установка базовых AUR пакетов ==="
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed gendesk
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
@@ -249,12 +232,9 @@ fi
 
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
 
-echo
+
 echo "=== Пересборка initramfs ==="
-
 mkinitcpio -P
-
-echo
 echo "=== Установка системных пакетов ==="
 
 SYSTEM_PKGS=(
@@ -264,7 +244,6 @@ SYSTEM_PKGS=(
 
 pacman -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
 
-echo
 echo "=== Инициализация и настройка Snapper ==="
 sed -i \
     -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
@@ -275,7 +254,7 @@ sed -i \
 systemctl disable --now snapper-timeline.timer || true
 systemctl enable --now snapper-cleanup.timer
 
-echo
+
 echo "=== Настройка служб ==="
 
 systemctl enable --now NetworkManager
@@ -298,8 +277,6 @@ fi
 if systemctl list-unit-files | grep -q "btrfs-scrub@-.timer"; then
     systemctl enable --now "btrfs-scrub@-.timer"
 fi
-
-echo
 echo "=== Настройка очистки Snapper ==="
 
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
@@ -312,15 +289,11 @@ EOF
 
 systemctl daemon-reload
 systemctl restart snapper-cleanup.timer
-
-echo
 echo "=== Обновление GRUB ==="
 
 if command -v grub-mkconfig >/dev/null 2>&1; then
     grub-mkconfig -o /boot/grub/grub.cfg
 fi
-
-echo
 echo "=== Bluetooth AIC8800 (опционально) ==="
 
 read -rp "Установить драйвер AIC8800 Bluetooth? [y/N]: " INSTALL_AIC
@@ -341,8 +314,6 @@ if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
     fi
     rm -rf "$TMP_DIR"
 fi
-
-echo
 echo "=== Настройка Bluetooth ==="
 
 BLUEZ_CONF="/etc/bluetooth/main.conf"
@@ -362,8 +333,6 @@ update_bluez_param "FastConnectable" "true"
 update_bluez_param "MultiProfile" "multiple"
 
 systemctl restart bluetooth
-
-echo
 echo "=== WirePlumber ==="
 
 if command -v wireplumber >/dev/null 2>&1; then
@@ -377,8 +346,6 @@ monitor.bluez.properties = {
 EOF
     chown "$REAL_USER":"$REAL_USER" "$WP_DIR/51-bluetooth-fix.conf"
 fi
-
-echo
 echo "=== Steam Workshop ==="
 
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
@@ -400,8 +367,6 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
 else
     echo "Steam Workshop пропущен"
 fi
-echo ""
-
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
 # ~/.bashrc
