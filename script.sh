@@ -180,7 +180,7 @@ fi
 
 
 echo "=== Установка базовых AUR пакетов ==="
-sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed gendesk
+sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
 sudo -u "$REAL_USER" yay -S  v2rayn-bin
 echo
