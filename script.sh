@@ -14,13 +14,22 @@ if [[ "$REAL_USER" == "root" ]]; then
     echo "❌ Не запускайте скрипт прямо из-под root. Запускайте: sudo ./script.sh"
     exit 1
 fi
-
+if pacman -Q linux-zen >/dev/null 2>&1; then
+    KERNEL_HEADERS="linux-zen-headers"
+    echo "Обнаружено ядро linux-zen"
+elif pacman -Q linux >/dev/null 2>&1; then
+    KERNEL_HEADERS="linux-headers"
+    echo "Обнаружено ядро linux"
+else
+    echo "❌ Поддерживаются только linux и linux-zen"
+    exit 1
+fi
 echo "============================================================"
 echo " Arch Linux Post Install Setup"
 echo "============================================================"
 
 echo
-read -rp "Steam login (оставьте пустым чтобы пропустить Workshop): " STEAM_USER
+read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
 
 STEAM_PASS=""
 if [[ -n "$STEAM_USER" ]]; then
@@ -83,17 +92,8 @@ pacman -Syu --noconfirm
 echo
 echo "=== Определение ядра ==="
 
-if pacman -Q linux-zen >/dev/null 2>&1; then
-    KERNEL_HEADERS="linux-zen-headers"
-    echo "Обнаружено ядро linux-zen"
-elif pacman -Q linux >/dev/null 2>&1; then
-    KERNEL_HEADERS="linux-headers"
-    echo "Обнаружено ядро linux"
-else
-    echo "❌ Поддерживаются только linux и linux-zen"
-    exit 1
-fi
 
+echo
 echo
 echo "=== Установка базовых пакетов ==="
 
@@ -101,10 +101,15 @@ BASE_PKGS=(
     base-devel git go reflector pacman-contrib bash-completion pciutils dkms
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
-    noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS} steam unzip rust python-pip cmake rocm-opencl-sdk rocm-hip-sdk"
+    noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
+    steam rust python-pip cmake
 )
 
+# Устанавливаем всё официальное одной чистой командой
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
+
+echo
+
 
 echo
 echo "=== Настройка локалей ==="
@@ -161,6 +166,33 @@ fi
 if [[ "$HAS_AMD" -eq 1 ]]; then
     echo "AMD обнаружена"
     GPU_PKGS+=(vulkan-radeon lib32-vulkan-radeon)
+
+    # Проверяем, установлен ли rocm-bin
+    if pacman -Qi rocm-bin >/dev/null 2>&1; then
+        echo "➜ rocm-bin уже установлен, пропускаем сборку."
+    else
+        echo "➜ rocm-bin не найден. Начинаем процесс установки..."
+
+        START_DIR=$(pwd)
+
+        BUILD_DIR="${REAL_HOME}/rocm-bin-build"
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR" || exit 1
+
+        git clone https://aur.archlinux.org/rocm-bin.git .
+
+        chown -R "$REAL_USER:$REAL_USER" "$BUILD_DIR"
+
+        echo "➜ Запуск сборки пакета..."
+        sudo -u "$REAL_USER" makepkg -si --noconfirm
+
+        # Возвращаемся обратно и начисто удаляем тяжелую папку сборки
+        cd "$START_DIR" || exit 1
+        rm -rf "$BUILD_DIR"
+
+        echo "✅ rocm-bin успешно установлен!"
+    fi
 fi
 
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
@@ -305,9 +337,12 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
         STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
     done
     STEAM_ARGS+=(+quit)
-
-    # Запускаем от имени обычного пользователя, чтобы папки скачались куда нужно
     sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
+    mkdir -p $REAL_HOME/wallpaper
+    for ITEM in "${WORKSHOP_ITEMS[@]}"; do
+      sudo -u "$REAL_USER" mv $REAL_HOME/.local/share/Steam/steamapps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper/
+    done
+    echo "Oбои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
 fi
