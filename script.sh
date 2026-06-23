@@ -134,7 +134,7 @@ echo "=== Включение multilib ==="
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
-echo
+sudo pacman -Syu --noconfirm
 echo "=== Установка базовых пакетов ==="
 
 BASE_PKGS=(
