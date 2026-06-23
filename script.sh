@@ -331,7 +331,7 @@ update_bluez_param() {
 update_bluez_param "Experimental" "true"
 update_bluez_param "FastConnectable" "true"
 update_bluez_param "MultiProfile" "multiple"
-
+sudo rfkill unblock bluetooth
 systemctl restart bluetooth
 echo "=== WirePlumber ==="
 
@@ -358,7 +358,7 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     STEAM_ARGS+=(+quit)
     sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
     mkdir -p $REAL_HOME/wallpaper
-    chmod -R 777 "$REAL_HOME/wallpaper"
+    chown -R 777 "$REAL_HOME/wallpaper"
     chmod -R 777 "$REAL_HOME/.steam/SteamApps/workshop/content/431960"
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
       sudo -u "$REAL_USER" mv "$REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper"
@@ -375,7 +375,6 @@ cat << 'EOF' > "$REAL_HOME/.bashrc"
 [[ $- != *i* ]] && return
 
 export PATH="$HOME/.local/bin:$PATH"
-export VENV_PATH="${HOME}/.venv"
 export HISTSIZE=10000
 export HISTFILESIZE=20000
 export HISTCONTROL=ignoreboth
@@ -427,16 +426,17 @@ alias weather='curl wttr.in'
 alias unpack='bsdtar -xf'
 
 python() {
-    if [[ -x "$VENV_PATH/bin/python" ]]; then
-        "$VENV_PATH/bin/python" "$@"
+    # uv run автоматически подхватит .venv, если оно есть
+    if command -v uv &> /dev/null; then
+        uv run python "$@"
     else
         command python "$@"
     fi
 }
 
 pip() {
-    if [[ -x "$VENV_PATH/bin/pip" ]]; then
-        "$VENV_PATH/bin/pip" "$@"
+    if command -v uv &> /dev/null; then
+        uv run pip "$@"
     else
         command pip "$@"
     fi
