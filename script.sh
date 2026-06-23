@@ -37,60 +37,79 @@ if [[ -n "$STEAM_USER" ]]; then
     echo
 fi
 
-echo
 echo "=== Исправление структуры Btrfs для Snapper ==="
 sudo pacman -S --needed --noconfirm snapper btrfs-progs btrfsmaintenance grub-btrfs inotify-tools snap-pac
-snapper -c root create-config /
 
-ROOT_DEV=$(findmnt -n -o SOURCE /)
+ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
 BASE_DEV=$(findmnt -vno SOURCE -T /)
-
-echo "➜ Корневое устройство: $BASE_DEV"
-echo "➜ UUID файловой системы: $ROOT_UUID"
-
-TARGET_PART="/dev/$(lsblk -no pkname "$ROOT_DEV")"
-
-echo "🔎 Определен физический LUKS-раздел: $TARGET_PART"
-if ! cryptsetup isLuks "$TARGET_PART" 2>/dev/null; then
-    echo "Раздел $TARGET_PART не LUKS."
+MNT_ROOT="/tmp/btrfs_top_level"
+mkdir -p "$MNT_ROOT"
+mount -o subvolid=5 "$ROOT_DEV" "$MNT_ROOT"
+if [ ! -d "$MNT_ROOT/@snapshots" ]; then
+    echo "➜ Создаем сабволум @snapshots на верхнем уровне Btrfs..."
+    btrfs subvolume create "$MNT_ROOT/@snapshots"
 fi
 
-if [ ! -c "/dev/tpmrm0" ]; then
-    echo "TPM 2.0 не найден."
+# 3. Настраиваем Snapper CONFIG
+if [ ! -f "/etc/snapper/configs/root" ]; then
+    echo "➜ Создаем конфигурацию Snapper..."
+    # Если папка /.snapshots осталась от старых попыток и это обычная папка, сносим её
+    if [ -d "/.snapshots" ] && [ ! -d "$MNT_ROOT/@snapshots" ]; then
+        rmdir "/.snapshots" || true
+    fi
+    snapper -c root create-config /
+    rmdir /.snapshots
+    mkdir /.snapshots
+fi
+
+umount "$MNT_ROOT"
+
+LUKS_NAME=$(lsblk -no TYPE,NAME "$ROOT_DEV" | grep "crypt" | awk '{print $2}' || true)
+if [ -n "$LUKS_NAME" ]; then
+    TARGET_PART=$(btrfs dev ready "$ROOT_DEV" 2>&1 | awk '{print $NF}' || dmsetup deps -o devname "$LUKS_NAME" | grep -o '(/dev/.*)' | tr -d '()')
 else
-    echo "🔗 Привязываем к TPM..."
-    systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 "$TARGET_PART"
+    PARENT_DEV="/dev/$(lsblk -no pkname "$ROOT_DEV")"
+    if cryptsetup isLuks "$PARENT_DEV" 2>/dev/null; then
+        TARGET_PART="$PARENT_DEV"
+    fi
 fi
 
-FSTAB_BTRFSROOT="UUID=$ROOT_UUID /btrfsroot btrfs subvolid=5,defaults,noatime 0 0"
-FSTAB_SNAPSHOTS="UUID=$ROOT_UUID /.snapshots btrfs rw,relatime,compress=zstd:3,ssd,discard=async,noatime,space_cache=v2,subvol=/@snapshots 0 0"
+echo "🔎 Определен физический LUKS-раздел: ${TARGET_PART:-Не найден или не LUKS}"
 
-# Создаем точку монтирования для /btrfsroot, если её нет
+if [ -n "$TARGET_PART" ] && cryptsetup isLuks "$TARGET_PART" 2>/dev/null; then
+    if [ ! -c "/dev/tpmrm0" ]; then
+        echo "⚠️ TPM 2.0 не найден. Пропускаем привязку."
+    else
+        echo "🔗 Привязываем к TPM..."
+        systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 "$TARGET_PART"
+    fi
+fi
+
+FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0" 
+FSTAB_SNAPSHOTS="UUID=$ROOT_UUID        /.snapshots            btrfs           rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,nofail,subvol=/@snapshots 0 0"
+
 if [ ! -d "/btrfsroot" ]; then
     echo "➜ Создаем директорию /btrfsroot..."
     mkdir -p "/btrfsroot"
 fi
 
-# Добавляем /btrfsroot в fstab, если его там еще нет
 if ! grep -q "subvolid=5" /etc/fstab && ! grep -q "/btrfsroot" /etc/fstab; then
     echo "➜ Добавляем /btrfsroot в /etc/fstab..."
     echo "$FSTAB_BTRFSROOT" >> /etc/fstab
 fi
 
-# Добавляем @snapshots в fstab, если его там еще нет
 if ! grep -q "subvol=/@snapshots" /etc/fstab; then
     echo "➜ Добавляем @snapshots в /etc/fstab..."
     echo "$FSTAB_SNAPSHOTS" >> /etc/fstab
 fi
 
-# Монтируем всё, что только что прописали
 echo "➜ Монтируем новые точки..."
 mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot уже примонтирован или занят"
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots уже примонтирован или занят"
 
-echo "✅ Настройка fstab и монтирование завершены успешно!"
-echo ""
+echo "✅ Настройка fstab и структуры Btrfs для Snapper завершена успешно!"
+
 echo "=== Включение multilib ==="
 
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
@@ -127,8 +146,9 @@ echo
 echo
 echo "=== Настройка локалей ==="
 
-sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 
 cat <<EOF > /etc/locale.conf
@@ -355,6 +375,7 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
       sudo -u "$REAL_USER" mv $REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper
     done
+    chmod -R 777 "$REAL_HOME/wallpaper"
     echo "Oбои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
