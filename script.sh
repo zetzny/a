@@ -49,6 +49,19 @@ BASE_DEV=$(findmnt -vno SOURCE -T /)
 echo "➜ Корневое устройство: $BASE_DEV"
 echo "➜ UUID файловой системы: $ROOT_UUID"
 
+TARGET_PART="/dev/$(lsblk -no pkname "$ROOT_DEV")"
+
+echo "🔎 Определен физический LUKS-раздел: $TARGET_PART"
+if ! cryptsetup isLuks "$TARGET_PART" 2>/dev/null; then
+    echo "Раздел $TARGET_PART не LUKS."
+fi
+
+if [ ! -c "/dev/tpmrm0" ]; then
+    echo "TPM 2.0 не найден."
+else
+    echo "🔗 Привязываем к TPM..."
+    systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 "$TARGET_PART"
+fi
 
 FSTAB_BTRFSROOT="UUID=$ROOT_UUID /btrfsroot btrfs subvolid=5,defaults,noatime 0 0"
 FSTAB_SNAPSHOTS="UUID=$ROOT_UUID /.snapshots btrfs rw,relatime,compress=zstd:3,ssd,discard=async,noatime,space_cache=v2,subvol=/@snapshots 0 0"
@@ -102,7 +115,7 @@ BASE_PKGS=(
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust python-pip cmake
+    steam rust python-pip cmake dotnet-host dotnet-targeting-pack dotnet-runtime dotnet-sdk
 )
 
 # Устанавливаем всё официальное одной чистой командой
@@ -144,10 +157,10 @@ else
 fi
 
 echo
-echo "=== Установка AUR пакетов ==="
-
-sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed xray-bin v2rayn-bin
-
+echo "=== Установка базовых AUR пакетов ==="
+sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed gendesk
+sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
+sudo -u "$REAL_USER" yay -S  v2rayn-bin
 echo
 echo "=== Определение GPU ==="
 
@@ -340,7 +353,7 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
     mkdir -p $REAL_HOME/wallpaper
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
-      sudo -u "$REAL_USER" mv $REAL_HOME/.local/share/Steam/steamapps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper/
+      sudo -u "$REAL_USER" mv $REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper
     done
     echo "Oбои находятся в $REAL_HOME/wallpaper"
 else
