@@ -372,10 +372,11 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     STEAM_ARGS+=(+quit)
     sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
     mkdir -p $REAL_HOME/wallpaper
-    for ITEM in "${WORKSHOP_ITEMS[@]}"; do
-      sudo -u "$REAL_USER" mv $REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper
-    done
     chmod -R 777 "$REAL_HOME/wallpaper"
+    chmod -R 777 "$REAL_HOME/.steam/SteamApps/workshop/content/431960"
+    for ITEM in "${WORKSHOP_ITEMS[@]}"; do
+      sudo -u "$REAL_USER" mv "$REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper"
+    done
     echo "Oбои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
