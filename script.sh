@@ -31,6 +31,19 @@ echo "============================================================"
 echo
 read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
 
+CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
+
+echo "=== включение BBR и буферов 16МБ ==="
+sudo bash -c "cat << 'EOF' > $CONFIG_FILE
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 10000
+EOF"
+sudo sysctl --system
 STEAM_PASS=""
 if [[ -n "$STEAM_USER" ]]; then
     read -rsp "Steam password: " STEAM_PASS
