@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-# скрипт ОБЯЗАТЕЛЬНО нужно запускать через sudo
+
 if [[ "$EUID" -ne 0 ]]; then
     echo "❌ Этот скрипт должен быть запущен от имени root (через sudo)."
     exit 1
 fi
 
-# Определяем реального пользователя, который запустил sudo
+
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
 
@@ -54,7 +54,6 @@ fi
 
 if [ ! -f "/etc/snapper/configs/root" ]; then
     echo "➜ Создаем конфигурацию Snapper..."
-    # Если папка /.snapshots осталась от старых попыток и это обычная папка, сносим её
     if [ -d "/.snapshots" ] && [ ! -d "$MNT_ROOT/@snapshots" ]; then
         rmdir "/.snapshots" || true
     fi
