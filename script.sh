@@ -358,27 +358,40 @@ monitor.bluez.properties = {
 EOF
     chown "$REAL_USER":"$REAL_USER" "$WP_DIR/51-bluetooth-fix.conf"
 fi
+
+
 echo "=== Steam Workshop ==="
 
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
     STEAM_ARGS=(+login "$STEAM_USER" "$STEAM_PASS")
-
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
         STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
     done
     STEAM_ARGS+=(+quit)
     sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
-    mkdir -p $REAL_HOME/wallpaper
-    chown -R 777 "$REAL_HOME/wallpaper"
-    chmod -R 777 "$REAL_HOME/.steam/SteamApps/workshop/content/431960"
-    for ITEM in "${WORKSHOP_ITEMS[@]}"; do
-      sudo -u "$REAL_USER" mv "$REAL_HOME/.steam/SteamApps/workshop/content/431960/$ITEM $REAL_HOME/wallpaper"
-    done
+    mkdir -p "$REAL_HOME/wallpaper"
+    chown -R "$REAL_USER" "$REAL_HOME/wallpaper"
+    chmod -R 777 "$REAL_HOME/wallpaper"
+    WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/431960"
+    
+    if [[ -d "$WORKSHOP_DIR" ]]; then
+        chmod -R 777 "$WORKSHOP_DIR"
+        
+        for ITEM in "${WORKSHOP_ITEMS[@]}"; do
+            sudo -u "$REAL_USER" mv "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
+        done
+    else
+        echo "Внимание: Директория воркшопа не найдена ($WORKSHOP_DIR)"
+    fi
+    
     echo "Oбои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
 fi
+
+
+
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
 # ~/.bashrc
