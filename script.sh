@@ -641,16 +641,15 @@ rainbow_user() {
     for ((i=0; i<${#user}; i++)); do
         local char="${user:$i:1}"
         local color="${colors[$((i % ${#colors[@]}))]}"
-        # Используем чистый ASCII-код \033 без башевских \[ \]
-        out+="\033[1;${color}m${char}"
+        # Добавляем \[ перед кодом цвета и \] после него
+        out+="\[\033[1;${color}m\]${char}"
     done
-    out+="\033[0m"
+    out+="\[\033[0m\]"
     echo -e "$out"
 }
-
+ 
 # Генерируем имя один раз при входе в терминал
 EXPORTED_USER=$(rainbow_user)
-
 
 PS1="[\[\033[1;31m\]\h\[\033[0m\]@${EXPORTED_USER} \[\033[1;32m\]\W\[\033[0m\]]\$ "
 
