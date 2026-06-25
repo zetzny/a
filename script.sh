@@ -55,41 +55,42 @@ sudo pacman -S --needed --noconfirm snapper btrfs-progs btrfsmaintenance grub-bt
 
 ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
-BASE_DEV=$(findmnt -vno SOURCE -T /)
 MNT_ROOT="/tmp/btrfs_top_level"
+
 mkdir -p "$MNT_ROOT"
 mount -o subvolid=5 "$ROOT_DEV" "$MNT_ROOT"
+
 if [ ! -d "$MNT_ROOT/@snapshots" ]; then
     echo "➜ Создаем сабволум @snapshots на верхнем уровне Btrfs..."
     btrfs subvolume create "$MNT_ROOT/@snapshots"
 fi
 
-
 if [ ! -f "/etc/snapper/configs/root" ]; then
     echo "➜ Создаем конфигурацию Snapper..."
-    if [ -d "/.snapshots" ] && [ ! -d "$MNT_ROOT/@snapshots" ]; then
-        rmdir "/.snapshots" || true
-    fi
     snapper -c root create-config /
-    rmdir /.snapshots
+
+    
+    if btrfs subvolume show /.snapshots >/dev/null 2>&1; then
+        btrfs subvolume delete /.snapshots
+    else
+        rmdir /.snapshots 2>/dev/null || true
+    fi
     mkdir /.snapshots
 fi
-
 umount "$MNT_ROOT"
+TARGET_PART=""
+PARENT_KNAME=$(lsblk -nro PKNAME "$ROOT_DEV" | head -n1)
 
-LUKS_NAME=$(lsblk -no TYPE,NAME "$ROOT_DEV" | grep "crypt" | awk '{print $2}' || true)
-if [ -n "$LUKS_NAME" ]; then
-    TARGET_PART=$(btrfs dev ready "$ROOT_DEV" 2>&1 | awk '{print $NF}' || dmsetup deps -o devname "$LUKS_NAME" | grep -o '(/dev/.*)' | tr -d '()')
-else
-    PARENT_DEV="/dev/$(lsblk -no pkname "$ROOT_DEV")"
-    if cryptsetup isLuks "$PARENT_DEV" 2>/dev/null; then
-        TARGET_PART="$PARENT_DEV"
+if [ -n "$PARENT_KNAME" ]; then
+    POTENTIAL_LUKS="/dev/$PARENT_KNAME"
+    if cryptsetup isLuks "$POTENTIAL_LUKS" 2>/dev/null; then
+        TARGET_PART="$POTENTIAL_LUKS"
     fi
 fi
 
 echo "🔎 Определен физический LUKS-раздел: ${TARGET_PART:-Не найден или не LUKS}"
 
-if [ -n "$TARGET_PART" ] && cryptsetup isLuks "$TARGET_PART" 2>/dev/null; then
+if [ -n "$TARGET_PART" ]; then
     if [ ! -c "/dev/tpmrm0" ]; then
         echo "⚠️ TPM 2.0 не найден. Пропускаем привязку."
     else
@@ -119,6 +120,7 @@ fi
 echo "➜ Монтируем новые точки..."
 mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot уже примонтирован или занят"
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots уже примонтирован или занят"
+
 
 echo "✅ Настройка fstab и структуры Btrfs для Snapper завершена успешно!"
 MAKEPKG_CONF="/etc/makepkg.conf"
