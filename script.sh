@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
-
-
 if [[ "$EUID" -ne 0 ]]; then
     echo "❌ Этот скрипт должен быть запущен от имени root (через sudo)."
     exit 1
 fi
-
-
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
-
 if [[ "$REAL_USER" == "root" ]]; then
     echo "❌ Не запускайте скрипт прямо из-под root. Запускайте: sudo ./script.sh"
     exit 1
@@ -27,7 +22,6 @@ fi
 echo "============================================================"
 echo " Arch Linux Post Install Setup"
 echo "============================================================"
-
 echo
 read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
 
@@ -50,24 +44,18 @@ EOF"
 sudo sysctl --system
 echo "=== Исправление структуры Btrfs для Snapper ==="
 sudo pacman -S --needed --noconfirm snapper btrfs-progs btrfsmaintenance grub-btrfs inotify-tools snap-pac
-
 ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
 MNT_ROOT="/tmp/btrfs_top_level"
-
 mkdir -p "$MNT_ROOT"
 mount -o subvolid=5 "$ROOT_DEV" "$MNT_ROOT"
-
 if [ ! -d "$MNT_ROOT/@snapshots" ]; then
-    echo "➜ Создаем сабволум @snapshots на верхнем уровне Btrfs..."
     btrfs subvolume create "$MNT_ROOT/@snapshots"
 fi
-
 if [ ! -f "/etc/snapper/configs/root" ]; then
-    echo "➜ Создаем конфигурацию Snapper..."
     snapper -c root create-config /
 
-    
+
     if btrfs subvolume show /.snapshots >/dev/null 2>&1; then
         btrfs subvolume delete /.snapshots
     else
@@ -76,13 +64,11 @@ if [ ! -f "/etc/snapper/configs/root" ]; then
     mkdir /.snapshots
 fi
 umount "$MNT_ROOT"
-
 TARGET_PART=""
-
 if [[ "$ROOT_DEV" == /dev/mapper/* || "$ROOT_DEV" == /dev/dm-* ]]; then
     echo "📦 Обнаружено зашифрованное устройство, ищем физический раздел..."
     POTENTIAL_LUKS=$(cryptsetup status "$ROOT_DEV" 2>/dev/null | awk '/device:/ {print $2}')
-    
+
     if [ -n "$POTENTIAL_LUKS" ] && cryptsetup isLuks "$POTENTIAL_LUKS" 2>/dev/null; then
         TARGET_PART="$POTENTIAL_LUKS"
     fi
@@ -91,9 +77,6 @@ else
         TARGET_PART="$ROOT_DEV"
     fi
 fi
-
-echo "🔎 Определен физический LUKS-раздел: ${TARGET_PART:-Не найден или не LUKS}"
-
 if [ -n "$TARGET_PART" ]; then
     if [ ! -c "/dev/tpmrm0" ]; then
         echo "⚠️ TPM 2.0 не найден. Пропускаем привязку."
@@ -102,59 +85,36 @@ if [ -n "$TARGET_PART" ]; then
         systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 "$TARGET_PART"
     fi
 fi
-
-FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0" 
+FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0"
 FSTAB_SNAPSHOTS="UUID=$ROOT_UUID        /.snapshots            btrfs           rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,nofail,subvol=/@snapshots 0 0"
-
 if [ ! -d "/btrfsroot" ]; then
-    echo "➜ Создаем директорию /btrfsroot..."
     mkdir -p "/btrfsroot"
 fi
-
 if ! grep -q "subvolid=5" /etc/fstab && ! grep -q "/btrfsroot" /etc/fstab; then
-    echo "➜ Добавляем /btrfsroot в /etc/fstab..."
     echo "$FSTAB_BTRFSROOT" >> /etc/fstab
 fi
-
 if ! grep -q "subvol=/@snapshots" /etc/fstab; then
-    echo "➜ Добавляем @snapshots в /etc/fstab..."
     echo "$FSTAB_SNAPSHOTS" >> /etc/fstab
 fi
-
-echo "➜ Монтируем новые точки..."
 mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot уже примонтирован или занят"
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots уже примонтирован или занят"
-
-
-echo "✅ Настройка fstab и структуры Btrfs для Snapper завершена успешно!"
 MAKEPKG_CONF="/etc/makepkg.conf"
-
 echo "=== изменение настроек сборки makepkg ($MAKEPKG_CONF) ==="
 if grep -q "MAKEFLAGS=" "$MAKEPKG_CONF"; then
-    echo "➜ Настраиваем многопоточную сборку (MAKEFLAGS)..."
     sed -i 's/^#\?MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' "$MAKEPKG_CONF"
 fi
-
-
 if grep -q "CFLAGS=" "$MAKEPKG_CONF"; then
-    echo "➜ Включаем оптимизацию под текущий процессор (-march=native)..."
-    
-    
     sed -i 's/^#CFLAGS=/CFLAGS=/' "$MAKEPKG_CONF"
     sed -i 's/^#CXXFLAGS=/CXXFLAGS=/' "$MAKEPKG_CONF"
-    
-
     sed -i 's/-march=[a-zA-Z0-9_-]*/-march=native/g' "$MAKEPKG_CONF"
     sed -i 's/-mtune=[a-zA-Z0-9_-]*/-mtune=native/g' "$MAKEPKG_CONF"
 fi
 echo "=== Включение multilib ==="
-
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
 sudo pacman -Syu --noconfirm
 echo "=== Установка базовых пакетов ==="
-
 BASE_PKGS=(
     base-devel git go reflector pacman-contrib bash-completion pciutils dkms
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
@@ -162,141 +122,99 @@ BASE_PKGS=(
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
     steam rust python-pip cmake
 )
-
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 echo "=== Настройка локалей ==="
-
 sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
-
 cat <<EOF > /etc/locale.conf
 LANG=en_US.UTF-8
 LC_TIME=ru_RU.UTF-8
 EOF
-
 echo
 echo "=== Установка yay (от пользователя $REAL_USER) ==="
-
 if ! command -v yay >/dev/null 2>&1; then
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
 
-    # Сборку пакета делаем строго от лица обычного пользователя
     sudo -u "$REAL_USER" bash -c "
         git clone https://aur.archlinux.org/yay.git '$TMP_DIR/yay'
         cd '$TMP_DIR/yay'
         makepkg -s --noconfirm
     "
-    # Устанавливаем собранный пакет от root
     pacman -U --noconfirm "$TMP_DIR/yay"/*.pkg.tar.zst
     rm -rf "$TMP_DIR"
 else
     echo "yay уже установлен"
 fi
-
-
 echo "=== Установка базовых AUR пакетов ==="
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
 sudo -u "$REAL_USER" yay -S --needed --noconfirm v2raya-bin
-echo
 echo "=== Определение GPU ==="
-
 GPU_PKGS=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader xdg-utils)
 HAS_NVIDIA=0
 HAS_AMD=0
-
 if lspci -nn | grep -Eiq 'nvidia'; then HAS_NVIDIA=1; fi
 if lspci -nn | grep -Eiq 'amd|advanced micro devices|radeon'; then HAS_AMD=1; fi
-
 if [[ "$HAS_NVIDIA" -eq 1 ]]; then
     echo "NVIDIA обнаружена"
     GPU_PKGS+=(nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings)
 fi
-
 if [[ "$HAS_AMD" -eq 1 ]]; then
     echo "AMD обнаружена"
     GPU_PKGS+=(vulkan-radeon lib32-vulkan-radeon)
-
-    # Проверяем, установлен ли rocm-bin
-    if pacman -Qi rocm-bin >/dev/null 2>&1; then
-        echo "➜ rocm-bin уже установлен, пропускаем сборку."
-    else
-        echo "➜ rocm-bin не найден. Начинаем процесс установки..."
-
+    if pacman -Qi rocm-bin >/dev/null 2>&1 || pacman -Qi rocm-core >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
         START_DIR=$(pwd)
-
         BUILD_DIR="${REAL_HOME}/rocm-bin-build"
         rm -rf "$BUILD_DIR"
         mkdir -p "$BUILD_DIR"
         cd "$BUILD_DIR" || exit 1
-
         git clone https://aur.archlinux.org/rocm-bin.git .
-
         chown -R "$REAL_USER:$REAL_USER" "$BUILD_DIR"
-
-        echo "➜ Запуск сборки пакета..."
-        sudo -u "$REAL_USER" makepkg -si --noconfirm
-
-        # Возвращаемся обратно и начисто удаляем тяжелую папку сборки
-        cd "$START_DIR" || exit 1
+        (cd "$BUILD_DIR" && sudo -H -u "$REAL_USER" makepkg -si --noconfirm)
+        cd "$START_DIR" || cd "$REAL_HOME" || exit 1
         rm -rf "$BUILD_DIR"
-
-        echo "✅ rocm-bin успешно установлен!"
+    else
+        echo "Rocm уже есть"
     fi
 fi
-
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
-
-
 echo "=== Пересборка initramfs ==="
 mkinitcpio -P
 echo "=== Установка системных пакетов ==="
-
 SYSTEM_PKGS=(
     bluez bluez-utils docker snapper snap-pac grub-btrfs
     btrfs-progs btrfsmaintenance ufw zram-generator inotify-tools mokutil
 )
-
 pacman -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
-
 echo "=== Инициализация и настройка Snapper ==="
 sed -i \
     -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
     -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
     -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
     /etc/snapper/configs/root
-
 systemctl disable --now snapper-timeline.timer || true
 systemctl enable --now snapper-cleanup.timer
-
-
 echo "=== Настройка служб ==="
-
 systemctl enable --now NetworkManager
 systemctl enable --now bluetooth
 systemctl enable --now docker
 systemctl enable --now ufw
 systemctl enable --now fstrim.timer
 systemctl enable --now paccache.timer
-
 usermod -aG docker "$REAL_USER"
-
 ufw default deny incoming
 ufw default allow outgoing
 ufw --force enable
-
 if systemctl list-unit-files | grep -q "grub-btrfsd.service"; then
     systemctl enable --now grub-btrfsd.service
 fi
-
 if systemctl list-unit-files | grep -q "btrfs-scrub@-.timer"; then
     systemctl enable --now "btrfs-scrub@-.timer"
 fi
 echo "=== Настройка очистки Snapper ==="
-
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
 cat <<EOF > /etc/systemd/system/snapper-cleanup.timer.d/override.conf
 [Timer]
@@ -304,18 +222,14 @@ OnCalendar=
 OnCalendar=daily
 Persistent=true
 EOF
-
 systemctl daemon-reload
 systemctl restart snapper-cleanup.timer
 echo "=== Обновление GRUB ==="
-
 if command -v grub-mkconfig >/dev/null 2>&1; then
     grub-mkconfig -o /boot/grub/grub.cfg
 fi
 echo "=== Bluetooth AIC8800 (опционально) ==="
-
 read -rp "Установить драйвер AIC8800 Bluetooth? [y/N]: " INSTALL_AIC
-
 if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
@@ -327,15 +241,12 @@ if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
     read -rp "Продолжить? [y/N]: " CONFIRM
 
     if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        # Инсталлятору драйвера нужны рут-права
         cd "$TMP_DIR/aic8800d80" && ./install.sh
     fi
     rm -rf "$TMP_DIR"
 fi
 echo "=== Настройка Bluetooth ==="
-
 BLUEZ_CONF="/etc/bluetooth/main.conf"
-
 update_bluez_param() {
     local param="$1"
     local value="$2"
@@ -345,14 +256,12 @@ update_bluez_param() {
         sed -i "/^\[General\]/a ${param} = ${value}" "$BLUEZ_CONF"
     fi
 }
-
 update_bluez_param "Experimental" "true"
 update_bluez_param "FastConnectable" "true"
 update_bluez_param "MultiProfile" "multiple"
 sudo rfkill unblock bluetooth
 systemctl restart bluetooth
 echo "=== WirePlumber ==="
-
 if command -v wireplumber >/dev/null 2>&1; then
     WP_DIR="$REAL_HOME/.config/wireplumber/wireplumber.conf.d"
     sudo -u "$REAL_USER" mkdir -p "$WP_DIR"
@@ -370,34 +279,35 @@ echo "=== Steam Workshop ==="
 
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
-    STEAM_ARGS=(+login "$STEAM_USER" "$STEAM_PASS")
+    STEAM_ARGS=(+run_script_at_dir /tmp +login "$STEAM_USER" "$STEAM_PASS")
+
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
         STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
     done
     STEAM_ARGS+=(+quit)
-    sudo -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}"
+
+    (cd /tmp && sudo -H -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}")
     mkdir -p "$REAL_HOME/wallpaper"
-    chown -R "$REAL_USER" "$REAL_HOME/wallpaper"
-    chmod -R 777 "$REAL_HOME/wallpaper"
+
     WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/431960"
-    
+
     if [[ -d "$WORKSHOP_DIR" ]]; then
-        chmod -R 777 "$WORKSHOP_DIR"
-        
         for ITEM in "${WORKSHOP_ITEMS[@]}"; do
-            sudo -u "$REAL_USER" mv "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
+            if [[ -d "$WORKSHOP_DIR/$ITEM" ]]; then
+                sudo -u "$REAL_USER" cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
+                sudo -u "$REAL_USER" rm -rf "$WORKSHOP_DIR/$ITEM"
+            fi
         done
     else
         echo "Внимание: Директория воркшопа не найдена ($WORKSHOP_DIR)"
     fi
-    
-    echo "Oбои находятся в $REAL_HOME/wallpaper"
+    chown -R "$REAL_USER" "$REAL_HOME/wallpaper"
+    chmod -R 755 "$REAL_HOME/wallpaper"
+
+    echo "Обои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
 fi
-
-
-
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
 # ~/.bashrc
@@ -457,7 +367,6 @@ alias weather='curl wttr.in'
 alias unpack='bsdtar -xf'
 
 python() {
-    # uv run автоматически подхватит .venv, если оно есть
     if command -v uv &> /dev/null; then
         uv run python "$@"
     else
@@ -521,7 +430,6 @@ nano() {
     local dir
     dir=$(dirname "$1")
     if [[ ( -e "$1" && ! -w "$1" ) || ( ! -e "$1" && ! -w "$dir" ) ]]; then
-        # Вместо "sudo command nano" используем прямой путь к бинарнику
         sudo /usr/bin/nano "$@"
     else
         command nano "$@"
@@ -672,14 +580,11 @@ rainbow_user() {
     for ((i=0; i<${#user}; i++)); do
         local char="${user:$i:1}"
         local color="${colors[$((i % ${#colors[@]}))]}"
-        # Добавляем \[ перед кодом цвета и \] после него
         out+="\[\033[1;${color}m\]${char}"
     done
     out+="\[\033[0m\]"
     echo -e "$out"
 }
- 
-# Генерируем имя один раз при входе в терминал
 EXPORTED_USER=$(rainbow_user)
 
 PS1="[\[\033[1;31m\]\h\[\033[0m\]@${EXPORTED_USER} \[\033[1;32m\]\W\[\033[0m\]]\$ "
@@ -691,7 +596,4 @@ chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc"
 echo
 echo "============================================================"
 echo "Установка завершена успешно!"
-echo "Пожалуйста:"
-echo "  • Перелогиньтесь, чтобы применились права группы docker."
-echo "  • Перезагрузите систему."
 echo "============================================================"
