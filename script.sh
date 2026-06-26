@@ -156,7 +156,7 @@ BASE_PKGS=(
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust python-pip cmake dotnet-host dotnet-targeting-pack dotnet-runtime dotnet-sdk
+    steam rust python-pip cmake
 )
 
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
@@ -194,9 +194,9 @@ fi
 
 
 echo "=== Установка базовых AUR пакетов ==="
-sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback vivaldi zed gendesk uv
+sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
-sudo -u "$REAL_USER" yay -S  v2rayn-bin
+sudo -u "$REAL_USER" yay -S  v2raya-bin
 echo
 echo "=== Определение GPU ==="
 
