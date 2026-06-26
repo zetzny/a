@@ -161,7 +161,7 @@ fi
 echo "=== Установка базовых AUR пакетов ==="
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
-sudo -u "$REAL_USER" yay -S --needed --noconfirm v2raya-bin
+sudo -u "$REAL_USER" yay -S --needed --noconfirm v2rayn
 echo "=== Определение GPU ==="
 GPU_PKGS=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader xdg-utils)
 HAS_NVIDIA=0
