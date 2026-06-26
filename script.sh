@@ -175,7 +175,12 @@ fi
 if [[ "$HAS_AMD" -eq 1 ]]; then
     echo "AMD обнаружена"
     GPU_PKGS+=(vulkan-radeon lib32-vulkan-radeon)
-    if pacman -Qi rocm-bin >/dev/null 2>&1 || pacman -Qi rocm-core >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
+    
+    # Если хотя бы что-то из этого вернуло true — значит, ROCm в системе присутствует
+    if pacman -Qi rocm-core >/dev/null 2>&1 || pacman -Qi rocm-bin >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
+        echo "✅ Rocm уже есть в системе, пропускаем установку."
+    else
+        echo "➜ ROCm не найден. Начинаем установку rocm-bin из AUR..."
         START_DIR=$(pwd)
         BUILD_DIR="${REAL_HOME}/rocm-bin-build"
         rm -rf "$BUILD_DIR"
@@ -186,8 +191,6 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
         (cd "$BUILD_DIR" && sudo -H -u "$REAL_USER" makepkg -si --noconfirm)
         cd "$START_DIR" || cd "$REAL_HOME" || exit 1
         rm -rf "$BUILD_DIR"
-    else
-        echo "Rocm уже есть"
     fi
 fi
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
