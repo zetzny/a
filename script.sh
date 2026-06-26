@@ -32,7 +32,11 @@ echo
 read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
 
 CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
-
+STEAM_PASS=""
+if [[ -n "$STEAM_USER" ]]; then
+    read -rsp "Steam password: " STEAM_PASS
+    echo
+fi
 echo "=== включение BBR и буферов 16МБ ==="
 sudo bash -c "cat << 'EOF' > $CONFIG_FILE
 net.core.default_qdisc = fq
@@ -44,12 +48,6 @@ net.ipv4.tcp_wmem = 4096 65536 16777216
 net.core.netdev_max_backlog = 1000
 EOF"
 sudo sysctl --system
-STEAM_PASS=""
-if [[ -n "$STEAM_USER" ]]; then
-    read -rsp "Steam password: " STEAM_PASS
-    echo
-fi
-
 echo "=== Исправление структуры Btrfs для Snapper ==="
 sudo pacman -S --needed --noconfirm snapper btrfs-progs btrfsmaintenance grub-btrfs inotify-tools snap-pac
 
