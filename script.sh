@@ -202,7 +202,7 @@ fi
 echo "=== Установка базовых AUR пакетов ==="
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
-sudo -u "$REAL_USER" yay -S  v2raya-bin
+sudo -u "$REAL_USER" yay -S --needed --noconfirm v2raya-bin
 echo
 echo "=== Определение GPU ==="
 
