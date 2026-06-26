@@ -83,6 +83,16 @@ if [ -n "$TARGET_PART" ]; then
     else
         echo "🔗 Привязываем к TPM..."
         systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 "$TARGET_PART"
+        LUKS_UUID=$(blkid -o value -s UUID "$TARGET_PART")
+
+        if [ -n "$LUKS_UUID" ] && [ -f "/etc/default/grub" ]; then
+            echo "⚙️ Модифицируем /etc/default/grub..."
+            sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet rd.luks.name=$LUKS_UUID=cryptroot rd.luks.options=tpm2-device=auto root=/dev/mapper/cryptroot rootflags=subvol=@\"|" /etc/default/grub
+            grub-mkconfig -o /boot/grub/grub.cfg
+            echo "✅ GRUB успешно настроен на автовыгрузку через TPM!"
+        else
+            echo "❌ Ошибка: Не удалось найти LUKS UUID или файл /etc/default/grub отсутствует."
+        fi
     fi
 fi
 FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0"
