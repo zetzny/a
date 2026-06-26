@@ -175,8 +175,6 @@ fi
 if [[ "$HAS_AMD" -eq 1 ]]; then
     echo "AMD обнаружена"
     GPU_PKGS+=(vulkan-radeon lib32-vulkan-radeon)
-    
-    # Если хотя бы что-то из этого вернуло true — значит, ROCm в системе присутствует
     if pacman -Qi rocm-core >/dev/null 2>&1 || pacman -Qi rocm-bin >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
         echo "✅ Rocm уже есть в системе, пропускаем установку."
     else
