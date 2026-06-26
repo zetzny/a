@@ -78,13 +78,19 @@ if [ ! -f "/etc/snapper/configs/root" ]; then
     mkdir /.snapshots
 fi
 umount "$MNT_ROOT"
-TARGET_PART=""
-PARENT_KNAME=$(lsblk -nro PKNAME "$ROOT_DEV" | head -n1)
 
-if [ -n "$PARENT_KNAME" ]; then
-    POTENTIAL_LUKS="/dev/$PARENT_KNAME"
-    if cryptsetup isLuks "$POTENTIAL_LUKS" 2>/dev/null; then
+TARGET_PART=""
+
+if [[ "$ROOT_DEV" == /dev/mapper/* || "$ROOT_DEV" == /dev/dm-* ]]; then
+    echo "📦 Обнаружено зашифрованное устройство, ищем физический раздел..."
+    POTENTIAL_LUKS=$(cryptsetup status "$ROOT_DEV" 2>/dev/null | awk '/device:/ {print $2}')
+    
+    if [ -n "$POTENTIAL_LUKS" ] && cryptsetup isLuks "$POTENTIAL_LUKS" 2>/dev/null; then
         TARGET_PART="$POTENTIAL_LUKS"
+    fi
+else
+    if cryptsetup isLuks "$ROOT_DEV" 2>/dev/null; then
+        TARGET_PART="$ROOT_DEV"
     fi
 fi
 
