@@ -99,7 +99,7 @@ BASE_PKGS=(
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust python-pip cmake
+    steam rust python-pip cmake dnsmasq
 )
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 echo "=== Настройка локалей ==="
@@ -224,6 +224,11 @@ if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
         cd "$TMP_DIR/aic8800d80" && ./install.sh
     fi
     rm -rf "$TMP_DIR"
+    sudo sed -i 's/^DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+    sudo ufw allow in on wlan0 to any port 53 proto udp
+    sudo ufw allow in on wlan0 to any port 67 proto udp
+    sudo ufw allow from 10.42.0.0/24
+    sudo ufw reload
 fi
 echo "=== Настройка Bluetooth ==="
 BLUEZ_CONF="/etc/bluetooth/main.conf"
