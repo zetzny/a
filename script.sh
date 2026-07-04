@@ -147,7 +147,10 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
     if pacman -Qi rocm-core >/dev/null 2>&1 || pacman -Qi rocm-bin >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
         echo "✅ Rocm уже есть в системе, пропускаем установку."
     else
-        echo "➜ ROCm не найден. Начинаем установку rocm-bin из AUR..."
+    echo "ROCM не найден установить?."
+    read -rp "Продолжить? [y/N]: " CONFIRM
+
+    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
         START_DIR=$(pwd)
         BUILD_DIR="${REAL_HOME}/rocm-bin-build"
         rm -rf "$BUILD_DIR"
@@ -158,6 +161,7 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
         (cd "$BUILD_DIR" && sudo -H -u "$REAL_USER" makepkg -si --noconfirm)
         cd "$START_DIR" || cd "$REAL_HOME" || exit 1
         rm -rf "$BUILD_DIR"
+        fi
     fi
 fi
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
