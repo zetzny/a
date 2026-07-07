@@ -4,7 +4,7 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME=$(eval echo "~$REAL_USER")F
+REAL_HOME=$(eval echo "~$REAL_USER")
 if [[ "$REAL_USER" == "root" ]]; then
     echo "❌ Не запускайте скрипт прямо из-под root. Запускайте: sudo ./script.sh"
     exit 1
@@ -101,8 +101,6 @@ cat <<EOF > /etc/locale.conf
 LANG=en_US.UTF-8
 LC_TIME=ru_RU.UTF-8
 EOF
-echo
-echo "=== Установка yay (от пользователя $REAL_USER) ==="
 if ! command -v yay >/dev/null 2>&1; then
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
@@ -209,26 +207,8 @@ Persistent=true
 EOF
 systemctl daemon-reload
 systemctl restart snapper-cleanup.timer
-echo "=== Обновление GRUB ==="
 if command -v grub-mkconfig >/dev/null 2>&1; then
     grub-mkconfig -o /boot/grub/grub.cfg
-fi
-echo "=== Bluetooth AIC8800 (опционально) ==="
-read -rp "Установить драйвер AIC8800 Bluetooth? [y/N]: " INSTALL_AIC
-if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
-    TMP_DIR=$(mktemp -d)
-    chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
-
-    sudo -u "$REAL_USER" git clone -b bluetooth https://github.com/shenmintao/aic8800d80.git "$TMP_DIR/aic8800d80"
-    chmod +x "$TMP_DIR/aic8800d80/install.sh"
-
-    echo "Будет выполнен install.sh от стороннего репозитория."
-    read -rp "Продолжить? [y/N]: " CONFIRM
-
-    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        cd "$TMP_DIR/aic8800d80" && ./install.sh
-    fi
-    rm -rf "$TMP_DIR"
 fi
 sudo sed -i 's/^DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 sudo ufw allow in on wlan0 to any port 53 proto udp
