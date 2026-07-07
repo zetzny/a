@@ -115,11 +115,21 @@ if ! command -v yay >/dev/null 2>&1; then
 else
     echo "yay уже установлен"
 fi
-echo "=== Установка базовых AUR пакетов ==="
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
 sudo -u "$REAL_USER" yay -S --needed --noconfirm v2rayn
-echo "=== Определение GPU ==="
+CPU_UCODE=""
+if grep -q "AuthenticAMD" /proc/cpuinfo; then
+    CPU_UCODE="amd-ucode"
+    echo "Был обнаружен процессор AMD"
+elif grep -q "GenuineIntel" /proc/cpuinfo; then
+    CPU_UCODE="intel-ucode"
+    echo "Был обнаружен процессор Intel"
+fi
+
+if [[ -n "$CPU_UCODE" ]]; then
+    pacman -S --needed --noconfirm "$CPU_UCODE"
+fi
 GPU_PKGS=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader xdg-utils)
 HAS_NVIDIA=0
 HAS_AMD=0
@@ -191,7 +201,6 @@ if [ -f "$SNAPPER_CONFIG_FILE" ]; then
 else
     echo "⚠️ Ошибка: Конфиг Snapper 'root' не найден по пути $SNAPPER_CONFIG_FILE"
 fi
-
 if [ -d "/.snapshots" ]; then
     chown -R :"$USER_GROUP" /.snapshots
     chmod 750 /.snapshots
@@ -215,7 +224,15 @@ sudo ufw allow in on wlan0 to any port 53 proto udp
 sudo ufw allow in on wlan0 to any port 67 proto udp
 sudo ufw allow from 10.42.0.0/24
 sudo ufw reload
-echo "=== Настройка Bluetooth ==="
+ZRAM_CONF="/etc/systemd/zram-generator.conf"
+sudo bash -c "cat << 'EOF' > $ZRAM_CONF
+[zram0]
+zram-size = min(ram, 8192)
+compression-algorithm = zstd
+swap-priority = 100
+EOF"
+systemctl daemon-reload
+systemctl enable --now systemd-zram-setup@zram0.service
 BLUEZ_CONF="/etc/bluetooth/main.conf"
 update_bluez_param() {
     local param="$1"
