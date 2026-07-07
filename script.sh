@@ -251,6 +251,7 @@ update_bluez_param "MultiProfile" "multiple"
 sudo rfkill unblock bluetooth
 systemctl restart bluetooth
 echo "=== WirePlumber ==="
+
 if command -v wireplumber >/dev/null 2>&1; then
     WP_DIR="$REAL_HOME/.config/wireplumber/wireplumber.conf.d"
     sudo -u "$REAL_USER" mkdir -p "$WP_DIR"
@@ -296,6 +297,29 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     echo "Обои находятся в $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop пропущен"
+fi
+GRUB_CONFIG="/etc/default/grub"
+
+echo "=== Настройка GRUB для сохранения выбранного ядра ==="
+cp "$GRUB_CONFIG" "${GRUB_CONFIG}.bak"
+echo "[+] Создан бэкап: ${GRUB_CONFIG}.bak"
+if grep -q "^GRUB_DEFAULT=" "$GRUB_CONFIG"; then
+    sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' "$GRUB_CONFIG"
+else
+    echo "GRUB_DEFAULT=saved" >> "$GRUB_CONFIG"
+fi
+if grep -q "^GRUB_SAVEDEFAULT=" "$GRUB_CONFIG"; then
+    sed -i 's/^GRUB_SAVEDEFAULT=.*/GRUB_SAVEDEFAULT=true/' "$GRUB_CONFIG"
+else
+    echo "GRUB_SAVEDEFAULT=true" >> "$GRUB_CONFIG"
+fi
+
+echo "=== Обновление конфигурации GRUB ==="
+if [ -d /boot/grub ]; then
+    grub-mkconfig -o /boot/grub/grub.cfg
+else
+    echo "Ошибка: Директория /boot/grub не найдена. Проверь, куда установлен G
+    RUB."
 fi
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
