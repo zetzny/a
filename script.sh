@@ -19,10 +19,6 @@ else
     echo "❌ Поддерживаются только linux и linux-zen"
     exit 1
 fi
-echo "============================================================"
-echo " Arch Linux Post Install Setup"
-echo "============================================================"
-echo
 read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
 
 CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
@@ -31,7 +27,6 @@ if [[ -n "$STEAM_USER" ]]; then
     read -rsp "Steam password: " STEAM_PASS
     echo
 fi
-echo "=== включение BBR и буферов 16МБ ==="
 sudo bash -c "cat << 'EOF' > $CONFIG_FILE
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
@@ -42,7 +37,6 @@ net.ipv4.tcp_wmem = 4096 65536 16777216
 net.core.netdev_max_backlog = 1000
 EOF"
 sudo sysctl --system
-echo "=== Исправление структуры Btrfs для Snapper ==="
 sudo pacman -S --needed --noconfirm snapper btrfs-progs btrfsmaintenance grub-btrfs inotify-tools snap-pac
 ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
@@ -78,7 +72,6 @@ fi
 mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot уже примонтирован или занят"
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots уже примонтирован или занят"
 MAKEPKG_CONF="/etc/makepkg.conf"
-echo "=== изменение настроек сборки makepkg ($MAKEPKG_CONF) ==="
 if grep -q "MAKEFLAGS=" "$MAKEPKG_CONF"; then
     sed -i 's/^#\?MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' "$MAKEPKG_CONF"
 fi
@@ -88,12 +81,10 @@ if grep -q "CFLAGS=" "$MAKEPKG_CONF"; then
     sed -i 's/-march=[a-zA-Z0-9_-]*/-march=native/g' "$MAKEPKG_CONF"
     sed -i 's/-mtune=[a-zA-Z0-9_-]*/-mtune=native/g' "$MAKEPKG_CONF"
 fi
-echo "=== Включение multilib ==="
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
 sudo pacman -Syu --noconfirm
-echo "=== Установка базовых пакетов ==="
 BASE_PKGS=(
     base-devel git go reflector pacman-contrib bash-completion pciutils dkms
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
@@ -102,7 +93,6 @@ BASE_PKGS=(
     steam rust python-pip cmake dnsmasq rust-src
 )
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
-echo "=== Настройка локалей ==="
 sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
@@ -165,9 +155,7 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
     fi
 fi
 pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
-echo "=== Пересборка initramfs ==="
 mkinitcpio -P
-echo "=== Установка системных пакетов ==="
 SYSTEM_PKGS=(
     bluez bluez-utils docker snapper snap-pac grub-btrfs
     btrfs-progs btrfsmaintenance ufw zram-generator inotify-tools mokutil
@@ -181,7 +169,6 @@ sed -i \
     /etc/snapper/configs/root
 systemctl disable --now snapper-timeline.timer || true
 systemctl enable --now snapper-cleanup.timer
-echo "=== Настройка служб ==="
 systemctl enable --now NetworkManager
 systemctl enable --now bluetooth
 systemctl enable --now docker
@@ -198,7 +185,22 @@ fi
 if systemctl list-unit-files | grep -q "btrfs-scrub@-.timer"; then
     systemctl enable --now "btrfs-scrub@-.timer"
 fi
-echo "=== Настройка очистки Snapper ==="
+
+SNAPPER_CONFIG_FILE="/etc/snapper/configs/root"
+if [ -f "$SNAPPER_CONFIG_FILE" ]; then
+    sed -i "s/^ALLOW_USERS=.*/ALLOW_USERS=\"$REAL_USER\"/" "$SNAPPER_CONFIG_FILE"
+    USER_GROUP=$(id -gn "$REAL_USER")
+    sed -i "s/^ALLOW_GROUPS=.*/ALLOW_GROUPS=\"$USER_GROUP\"/" "$SNAPPER_CONFIG_FILE"
+else
+    echo "⚠️ Ошибка: Конфиг Snapper 'root' не найден по пути $SNAPPER_CONFIG_FILE"
+fi
+
+if [ -d "/.snapshots" ]; then
+    chown -R :"$USER_GROUP" /.snapshots
+    chmod 750 /.snapshots
+else
+    echo "⚠️ Предупреждение: Папка /.snapshots не найдена. Возможно, снимки еще не создавались."
+fi
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
 cat <<EOF > /etc/systemd/system/snapper-cleanup.timer.d/override.conf
 [Timer]
@@ -228,12 +230,12 @@ if [[ "$INSTALL_AIC" =~ ^[Yy]$ ]]; then
         cd "$TMP_DIR/aic8800d80" && ./install.sh
     fi
     rm -rf "$TMP_DIR"
-    sudo sed -i 's/^DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-    sudo ufw allow in on wlan0 to any port 53 proto udp
-    sudo ufw allow in on wlan0 to any port 67 proto udp
-    sudo ufw allow from 10.42.0.0/24
-    sudo ufw reload
 fi
+sudo sed -i 's/^DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+sudo ufw allow in on wlan0 to any port 53 proto udp
+sudo ufw allow in on wlan0 to any port 67 proto udp
+sudo ufw allow from 10.42.0.0/24
+sudo ufw reload
 echo "=== Настройка Bluetooth ==="
 BLUEZ_CONF="/etc/bluetooth/main.conf"
 update_bluez_param() {
@@ -250,22 +252,33 @@ update_bluez_param "FastConnectable" "true"
 update_bluez_param "MultiProfile" "multiple"
 sudo rfkill unblock bluetooth
 systemctl restart bluetooth
-echo "=== WirePlumber ==="
 
 if command -v wireplumber >/dev/null 2>&1; then
     WP_DIR="$REAL_HOME/.config/wireplumber/wireplumber.conf.d"
     sudo -u "$REAL_USER" mkdir -p "$WP_DIR"
-
     cat > "$WP_DIR/51-bluetooth-fix.conf" <<EOF
 monitor.bluez.properties = {
     bluez5.suspend-on-idle = false
+    bluetooth.autoswitch-to-headset = false
 }
 EOF
     chown "$REAL_USER":"$REAL_USER" "$WP_DIR/51-bluetooth-fix.conf"
 fi
+if command -v pipewire >/dev/null 2>&1; then
+    PW_DIR="$REAL_HOME/.config/pipewire/pipewire.conf.d"
+    sudo -u "$REAL_USER" mkdir -p "$PW_DIR"
+    cat > "$PW_DIR/99-input-latency.conf" <<EOF
+context.properties = {
+    default.clock.min-quantum = 1024
+}
+EOF
+    chown "$REAL_USER":"$REAL_USER" "$PW_DIR/99-input-latency.conf"
+fi
+if [ -n "$REAL_USER" ]; then
+    echo "=== Restarting Audio Services ==="
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="/run/user/$(id -u $REAL_USER)" systemctl --user restart pipewire wireplumber pipewire-pulse
+fi
 
-
-echo "=== Steam Workshop ==="
 
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
@@ -313,8 +326,6 @@ if grep -q "^GRUB_SAVEDEFAULT=" "$GRUB_CONFIG"; then
 else
     echo "GRUB_SAVEDEFAULT=true" >> "$GRUB_CONFIG"
 fi
-
-echo "=== Обновление конфигурации GRUB ==="
 if [ -d /boot/grub ]; then
     grub-mkconfig -o /boot/grub/grub.cfg
 else
@@ -336,29 +347,14 @@ export HISTIGNORE="ls:ll:pwd:exit:clear"
 export EDITOR="nano"
 export TERM="xterm-256color"
 
-# Настройки Llama
-LLAMA_SERVER_PATH="${HOME}/llama/llama-server"
-LLAMA_KV_CACHE="q8_0"
-LLAMA_TEMP="0.5"
-LLAMA_CTX="50000"
-BATCH_SIZE="3072"
-REPEAT_PENALTY="1.1"
-AGENT="false"
-USE_SUDO="false"
-THREADS="$(nproc)"
-THREADS_BATCH="$(nproc)"
-HOST="0.0.0.0"
-PORT="8080"
-REASONING="auto"
-REASONING_BUDGET="-1"
-DRAFT_MIN="0"
-DRAFT_MAX="3"
-
 shopt -s checkwinsize
 shopt -s direxpand
 shopt -s expand_aliases
 shopt -s histappend
 
+alias pacman='sudo pacman'
+alias mkinit='sudo mkinitcpio -P'
+alias grubupd='sudo grub-mkconfig -o /boot/grub/grub.cfg'
 alias sudo='sudo '
 alias exe='chmod +x'
 alias ..='cd ..'
@@ -369,13 +365,6 @@ alias ll='ls -lah'
 alias la='ls -A'
 alias grep='grep --color=auto'
 alias diff='diff --color=auto'
-alias gs='git status'
-alias ga='git add'
-alias gaa='git add --all'
-alias gc='git commit -m'
-alias gp='git push'
-alias gd='git diff'
-alias gl='git log --oneline --graph --decorate'
 alias weather='curl wttr.in'
 alias unpack='bsdtar -xf'
 
@@ -524,68 +513,6 @@ mem() {
     echo ""
     echo "═══════════════════════════════════════"
 }
-
-lrun() {
-    local M_VAL="" MD_VAL="" MM_VAL="" EXTRA_ARGS=()
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -fold)
-                local FOLD_PATH="${2%/}"
-                if [[ ! -f "$FOLD_PATH/model.gguf" ]]; then
-                    echo "❌ Error: 'model.gguf' не найден в папке '$FOLD_PATH'."
-                    return 1
-                fi
-                M_VAL="$FOLD_PATH/model.gguf"
-                [[ -f "$FOLD_PATH/mtp.gguf" ]] && MD_VAL="$FOLD_PATH/mtp.gguf"
-                [[ -f "$FOLD_PATH/mmproj.gguf" ]] && MM_VAL="$FOLD_PATH/mmproj.gguf"
-                shift 2 ;;
-            -m) M_VAL="$2"; shift 2 ;;
-            -md) MD_VAL="$2"; shift 2 ;;
-            --mmproj|-mmproj) MM_VAL="$2"; shift 2 ;;
-            *) EXTRA_ARGS+=("$1"); shift 1 ;;
-        esac
-    done
-    if [[ -z "$M_VAL" ]]; then
-        echo "❌ Error: Главная модель (-m или -fold) обязательна для запуска."
-        return 1
-    fi
-    local CMD=()
-    [[ "$USE_SUDO" = "true" ]] && CMD+=(sudo)
-    CMD+=("$LLAMA_SERVER_PATH")
-    [[ "$AGENT" = "true" ]] && CMD+=("--agent")
-    CMD+=(
-        "--spec-draft-n-max" "$DRAFT_MAX"
-        "--spec-draft-n-min" "$DRAFT_MIN"
-        "--metrics"
-        "--reasoning" "$REASONING"
-        "--reasoning-budget" "$REASONING_BUDGET"
-        "--mlock"
-        "--no-mmap"
-        "-t" "$THREADS"
-        "-tb" "$THREADS_BATCH"
-        "--host" "$HOST"
-        "--port" "$PORT"
-        "-fa" "on"
-        "-ctk" "$LLAMA_KV_CACHE"
-        "-ctv" "$LLAMA_KV_CACHE"
-        "-ngl" "all"
-        "-ctkd" "$LLAMA_KV_CACHE"
-        "-ctvd" "$LLAMA_KV_CACHE"
-        "--temp" "$LLAMA_TEMP"
-        "--repeat-penalty" "$REPEAT_PENALTY"
-        "-ngld" "all"
-        "--batch-size" "$BATCH_SIZE"
-        "--alias" "model"
-        "--ctx-size" "$LLAMA_CTX"
-        "-m" "$M_VAL"
-    )
-    [[ -n "$MD_VAL" ]] && CMD+=("-md" "$MD_VAL")
-    [[ -n "$MM_VAL" ]] && CMD+=("--mmproj" "$MM_VAL")
-    CMD+=("${EXTRA_ARGS[@]}")
-    echo "Запуск: ${CMD[*]}"
-    "${CMD[@]}"
-}
-
 rainbow_user() {
     local user="${USER:-$(whoami)}"
     local colors=(31 33 32 36 34 35)
@@ -608,5 +535,6 @@ EOF
 chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc"
 echo
 echo "============================================================"
-echo "Установка завершена успешно!"
+echo "              Установка завершена успешно!"
+echo "                  Перезагрузите ПК"
 echo "============================================================"
