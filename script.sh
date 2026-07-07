@@ -99,7 +99,7 @@ BASE_PKGS=(
     curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust python-pip cmake dnsmasq
+    steam rust python-pip cmake dnsmasq rust-src
 )
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 echo "=== Настройка локалей ==="
