@@ -4,7 +4,7 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME=$(eval echo "~$REAL_USER")
+REAL_HOME=$(eval echo "~$REAL_USER")F
 if [[ "$REAL_USER" == "root" ]]; then
     echo "❌ Не запускайте скрипт прямо из-под root. Запускайте: sudo ./script.sh"
     exit 1
@@ -161,7 +161,6 @@ SYSTEM_PKGS=(
     btrfs-progs btrfsmaintenance ufw zram-generator inotify-tools mokutil
 )
 pacman -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
-echo "=== Инициализация и настройка Snapper ==="
 sed -i \
     -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
     -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
