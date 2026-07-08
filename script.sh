@@ -80,6 +80,7 @@ if grep -q "CFLAGS=" "$MAKEPKG_CONF"; then
     sed -i 's/^#CXXFLAGS=/CXXFLAGS=/' "$MAKEPKG_CONF"
     sed -i 's/-march=[a-zA-Z0-9_-]*/-march=native/g' "$MAKEPKG_CONF"
     sed -i 's/-mtune=[a-zA-Z0-9_-]*/-mtune=native/g' "$MAKEPKG_CONF"
+    sed -i 's/-O2/-O3/g' "$MAKEPKG_CONF"
 fi
 if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
