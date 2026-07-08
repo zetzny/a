@@ -271,7 +271,6 @@ EOF
     chown "$REAL_USER":"$REAL_USER" "$PW_DIR/99-input-latency.conf"
 fi
 if [ -n "$REAL_USER" ]; then
-    echo "=== Restarting Audio Services ==="
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="/run/user/$(id -u $REAL_USER)" systemctl --user restart pipewire wireplumber pipewire-pulse
 fi
 
