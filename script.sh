@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 if [[ "$EUID" -ne 0 ]]; then
-    echo "❌ Этот скрипт должен быть запущен от имени root (через sudo)."
+    echo "❌ this script should be launched from root (using sudo)."
     exit 1
 fi
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
 if [[ "$REAL_USER" == "root" ]]; then
-    echo "❌ Не запускайте скрипт прямо из-под root. Запускайте: sudo ./script.sh"
+    echo "❌ Dont launch under root. launch: sudo ./script.sh"
     exit 1
 fi
 if pacman -Q linux-zen >/dev/null 2>&1; then
@@ -14,12 +14,12 @@ if pacman -Q linux-zen >/dev/null 2>&1; then
     echo "Обнаружено ядро linux-zen"
 elif pacman -Q linux >/dev/null 2>&1; then
     KERNEL_HEADERS="linux-headers"
-    echo "Обнаружено ядро linux"
+    echo "found linux kernel"
 else
-    echo "❌ Поддерживаются только linux и linux-zen"
+    echo "❌ supported only for  linux and linux-zen"
     exit 1
 fi
-read -rp "Steam login (оставьте пустым чтобы пропустить скачивание обоев): " STEAM_USER
+read -rp "Steam login (keep empty to skip wallpaper install): " STEAM_USER
 
 CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
 STEAM_PASS=""
@@ -88,20 +88,16 @@ fi
 sudo pacman -Syu --noconfirm
 BASE_PKGS=(
     base-devel git go reflector pacman-contrib bash-completion pciutils dkms
-    curl wget rsync unzip zip less which nano htop ncdu openssh smartmontools
+    curl wget rsync unzip zip less which nano  ncdu openssh smartmontools
     networkmanager network-manager-applet noto-fonts noto-fonts-cjk
     noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust python-pip cmake dnsmasq rust-src
+    steam rust cmake dnsmasq rust-src power-profiles-daemon
 )
 pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
-cat <<EOF > /etc/locale.conf
-LANG=en_US.UTF-8
-LC_TIME=ru_RU.UTF-8
-EOF
 if ! command -v yay >/dev/null 2>&1; then
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
@@ -114,7 +110,7 @@ if ! command -v yay >/dev/null 2>&1; then
     pacman -U --noconfirm "$TMP_DIR/yay"/*.pkg.tar.zst
     rm -rf "$TMP_DIR"
 else
-    echo "yay уже установлен"
+    echo "yay already installed"
 fi
 sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv
 sudo -u "$REAL_USER" yay -S --needed --noconfirm xray-bin
@@ -122,10 +118,10 @@ sudo -u "$REAL_USER" yay -S --needed --noconfirm v2rayn
 CPU_UCODE=""
 if grep -q "AuthenticAMD" /proc/cpuinfo; then
     CPU_UCODE="amd-ucode"
-    echo "Был обнаружен процессор AMD"
+    echo "found AMD processor"
 elif grep -q "GenuineIntel" /proc/cpuinfo; then
     CPU_UCODE="intel-ucode"
-    echo "Был обнаружен процессор Intel"
+    echo "found Intel processor"
 fi
 
 if [[ -n "$CPU_UCODE" ]]; then
@@ -137,17 +133,17 @@ HAS_AMD=0
 if lspci -nn | grep -Eiq 'nvidia'; then HAS_NVIDIA=1; fi
 if lspci -nn | grep -Eiq 'amd|advanced micro devices|radeon'; then HAS_AMD=1; fi
 if [[ "$HAS_NVIDIA" -eq 1 ]]; then
-    echo "NVIDIA обнаружена"
+    echo "NVIDIA card found"
     GPU_PKGS+=(nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings)
 fi
 if [[ "$HAS_AMD" -eq 1 ]]; then
-    echo "AMD обнаружена"
+    echo "AMD card found"
     GPU_PKGS+=(vulkan-radeon lib32-vulkan-radeon)
     if pacman -Qi rocm-core >/dev/null 2>&1 || pacman -Qi rocm-bin >/dev/null 2>&1 || command -v rocminfo >/dev/null 2>&1; then
-        echo "✅ Rocm уже есть в системе, пропускаем установку."
+        echo "✅ Rocm already installed, skipping install."
     else
-    echo "ROCM не найден установить?."
-    read -rp "Продолжить? [y/N]: " CONFIRM
+    echo "ROCM isn't found install?."
+    read -rp "continue? [y/N]: " CONFIRM
 
     if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
         START_DIR=$(pwd)
@@ -170,11 +166,31 @@ SYSTEM_PKGS=(
     btrfs-progs btrfsmaintenance ufw zram-generator inotify-tools mokutil
 )
 pacman -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
+sed -i 's/TIMELINE_LIMIT_HOURLY="[^"]*"/TIMELINE_LIMIT_HOURLY="0"/' /etc/snapper/configs/boot
+sed -i 's/TIMELINE_LIMIT_DAILY="[^"]*"/TIMELINE_LIMIT_DAILY="5"/' /etc/snapper/configs/boot
+sed -i 's/TIMELINE_LIMIT_WEEKLY="[^"]*"/TIMELINE_LIMIT_WEEKLY="0"/' /etc/snapper/configs/boot
+sed -i 's/TIMELINE_LIMIT_MONTHLY="[^"]*"/TIMELINE_LIMIT_MONTHLY="0"/' /etc/snapper/configs/boot
+sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
 sed -i \
     -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
     -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
     -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
     /etc/snapper/configs/root
+if [ ! -f "/etc/snapper/configs/boot" ]; then
+    # Creates a non-Btrfs snapper configuration specifically for /boot
+    snapper -c boot create-config /boot
+    sed -i 's/TIMELINE_LIMIT_HOURLY="[^"]*"/TIMELINE_LIMIT_HOURLY="0"/' /etc/snapper/configs/boot
+    sed -i 's/TIMELINE_LIMIT_DAILY="[^"]*"/TIMELINE_LIMIT_DAILY="5"/' /etc/snapper/configs/boot
+    sed -i 's/TIMELINE_LIMIT_WEEKLY="[^"]*"/TIMELINE_LIMIT_WEEKLY="0"/' /etc/snapper/configs/boot
+    sed -i 's/TIMELINE_LIMIT_MONTHLY="[^"]*"/TIMELINE_LIMIT_MONTHLY="0"/' /etc/snapper/configs/boot
+    sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
+    sed -i \
+    -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
+    -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
+    -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
+    /etc/snapper/configs/boot
+fi
+
 systemctl disable --now snapper-timeline.timer || true
 systemctl enable --now snapper-cleanup.timer
 systemctl enable --now NetworkManager
@@ -200,13 +216,13 @@ if [ -f "$SNAPPER_CONFIG_FILE" ]; then
     USER_GROUP=$(id -gn "$REAL_USER")
     sed -i "s/^ALLOW_GROUPS=.*/ALLOW_GROUPS=\"$USER_GROUP\"/" "$SNAPPER_CONFIG_FILE"
 else
-    echo "⚠️ Ошибка: Конфиг Snapper 'root' не найден по пути $SNAPPER_CONFIG_FILE"
+    echo "⚠️ error: config Snapper 'root' can't be found on path: $SNAPPER_CONFIG_FILE"
 fi
 if [ -d "/.snapshots" ]; then
     chown -R :"$USER_GROUP" /.snapshots
     chmod 750 /.snapshots
 else
-    echo "⚠️ Предупреждение: Папка /.snapshots не найдена. Возможно, снимки еще не создавались."
+    echo "⚠️ warning: folder /.snapshots isnt found. maybe, snapshots haven't been created."
 fi
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
 cat <<EOF > /etc/systemd/system/snapper-cleanup.timer.d/override.conf
@@ -220,11 +236,6 @@ systemctl restart snapper-cleanup.timer
 if command -v grub-mkconfig >/dev/null 2>&1; then
     grub-mkconfig -o /boot/grub/grub.cfg
 fi
-sudo sed -i 's/^DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-sudo ufw allow in on wlan0 to any port 53 proto udp
-sudo ufw allow in on wlan0 to any port 67 proto udp
-sudo ufw allow from 10.42.0.0/24
-sudo ufw reload
 ZRAM_CONF="/etc/systemd/zram-generator.conf"
 sudo bash -c "cat << 'EOF' > $ZRAM_CONF
 [zram0]
@@ -298,18 +309,16 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
             fi
         done
     else
-        echo "Внимание: Директория воркшопа не найдена ($WORKSHOP_DIR)"
+        echo "warning: workshop directory can't be found. ($WORKSHOP_DIR)"
     fi
     chown -R "$REAL_USER" "$REAL_HOME/wallpaper"
     chmod -R 755 "$REAL_HOME/wallpaper"
 
-    echo "Обои находятся в $REAL_HOME/wallpaper"
+    echo "wallpapers are located at $REAL_HOME/wallpaper"
 else
-    echo "Steam Workshop пропущен"
+    echo "Steam Workshop skipped"
 fi
 GRUB_CONFIG="/etc/default/grub"
-
-echo "=== Настройка GRUB для сохранения выбранного ядра ==="
 cp "$GRUB_CONFIG" "${GRUB_CONFIG}.bak"
 echo "[+] Создан бэкап: ${GRUB_CONFIG}.bak"
 if grep -q "^GRUB_DEFAULT=" "$GRUB_CONFIG"; then
@@ -325,8 +334,7 @@ fi
 if [ -d /boot/grub ]; then
     grub-mkconfig -o /boot/grub/grub.cfg
 else
-    echo "Ошибка: Директория /boot/grub не найдена. Проверь, куда установлен G
-    RUB."
+    echo "error: Folder /boot/grub not found. check, where is GRUB installed."
 fi
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
@@ -362,7 +370,6 @@ alias la='ls -A'
 alias grep='grep --color=auto'
 alias diff='diff --color=auto'
 alias weather='curl wttr.in'
-alias unpack='bsdtar -xf'
 
 python() {
     if command -v uv &> /dev/null; then
@@ -392,10 +399,10 @@ fset() {
     elif [ "$#" -eq 4 ] && [ "$1" = "-R" ]; then
         sudo chown -R "$2" "$4" && sudo chmod -R "$3" "$4"
     else
-        echo "Использование:"
-        echo "  fset <права> <файл>"
-        echo "  fset <владелец> <права> <файл>"
-        echo "  fset -R <владелец> <права> <папка>"
+        echo "use examples:"
+        echo "  fset <right> <file>"
+        echo "  fset <owner> <right> <file>"
+        echo "  fset -R <owner> <right> <folder>"
         return 1
     fi
 }
@@ -435,21 +442,21 @@ nano() {
 }
 
 clean() {
-    echo "🧹 Начинаем очистку системы..."
+    echo "🧹 starting system cleanup..."
     if pacman -Qdtq >/dev/null 2>&1; then
         pacman -Qdtq | xargs -r sudo pacman -Rns
     fi
     sudo paccache -rk1
     sudo journalctl --vacuum-time=3d
     rm -rf ~/.cache/*
-    echo "🗑️ Удаление битых симлинков..."
+    echo "🗑️ deleting wrong symlinks..."
     find ~/.local/bin -xtype l -delete 2>/dev/null
     systemctl --failed --all
 }
 
 rollback() {
     if [[ -z "${1:-}" ]]; then
-        echo "❌ Error: Введите номер снимка (Пример: rollback 69)"
+        echo "❌ Error: enter snap number (example: rollback 69)"
         return 1
     fi
     local target="$1"
@@ -457,13 +464,21 @@ rollback() {
     last=$(sudo snapper list | awk '$1 ~ /^[0-9]+$/ { id=$1 } END { print id }')
 
     if [[ ! "$last" =~ ^[0-9]+$ ]]; then
-        echo "❌ Error: Не удалось определить ID последнего снимка."
+        echo "❌ Error: couldn't define ID of last snap."
         return 1
     fi
-
     sudo snapper --ambit classic rollback "$target"
     local next=$((last + 2))
     echo "CONFIRM" | sudo snapper-rollback "$next"
+    local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
+    if [ -d "$boot_snapshot_dir" ]; then
+        echo "🔄 detected backup for /boot ID №$target. recovering boot files..."
+        sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
+        echo "✅  /boot boot successfuly syncronised with №$target."
+    else
+        echo "⚠️ Warning: backup /boot for ID №$target is not found in  $boot_snapshot_dir."
+        echo "maybe, manual grub configuration change is required after reboot."
+    fi
 }
 
 mem() {
@@ -509,21 +524,33 @@ mem() {
     echo ""
     echo "═══════════════════════════════════════"
 }
+# Function to generate a random 16-color ANSI code (31-36 are standard bright colors)
+get_random_color() {
+    local colors=(31 32 33 34 35 36 91 92 93 94 95 96)
+    echo "${colors[$((RANDOM % ${#colors[@]}))]}"
+}
+
 rainbow_user() {
     local user="${USER:-$(whoami)}"
-    local colors=(31 33 32 36 34 35)
+    local colors=(31 32 33 34 35 36 91 92 93 94 95 96)
     local out="" i
     for ((i=0; i<${#user}; i++)); do
         local char="${user:$i:1}"
-        local color="${colors[$((i % ${#colors[@]}))]}"
+        local color="${colors[$((RANDOM % ${#colors[@]}))]}"
         out+="\[\033[1;${color}m\]${char}"
     done
-    out+="\[\033[0m\]"
-    echo -e "$out"
+    echo -ne "$out"
 }
-EXPORTED_USER=$(rainbow_user)
-
-PS1="[\[\033[1;31m\]\h\[\033[0m\]@${EXPORTED_USER} \[\033[1;32m\]\W\[\033[0m\]]\$ "
+set_prompt() {
+    local host_color=$(get_random_color)
+    local dir_color=$(get_random_color)
+    local arrow_color=$(get_random_color)
+    local r_user=$(rainbow_user)
+    
+    # \h = hostname, \W = current directory base name, \$ = user/root symbol
+    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\] \|\[\033[1;${dir_color}m\]\W\[\033[0m\]] \[\033[1;${arrow_color}m\]->\[\033[0m\] "
+}
+PROMPT_COMMAND=set_prompt
 
 [[ -r /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
 EOF
@@ -531,6 +558,6 @@ EOF
 chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc"
 echo
 echo "============================================================"
-echo "              Установка завершена успешно!"
-echo "                  Перезагрузите ПК"
+echo "              Install compelete!"
+echo "                 Restart PC"
 echo "============================================================"
