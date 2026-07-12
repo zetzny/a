@@ -385,7 +385,10 @@ fi
 # ==============================================================================
 # STEAM WORKSHOP
 # ==============================================================================
-if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
+
+
+# ==============================================================================
+# GRif [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
     STEAM_ARGS=(+run_script_at_dir /tmp +login "$STEAM_USER" "$STEAM_PASS")
 
@@ -393,8 +396,8 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
         STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
     done
     STEAM_ARGS+=(+quit)
-
     (cd /tmp && sudo -H -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}")
+    
     mkdir -p "$REAL_HOME/wallpaper"
 
     WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/431960"
@@ -402,21 +405,22 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     if [[ -d "$WORKSHOP_DIR" ]]; then
         for ITEM in "${WORKSHOP_ITEMS[@]}"; do
             if [[ -d "$WORKSHOP_DIR/$ITEM" ]]; then
-                sudo -u "$REAL_USER" cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
-                sudo -u "$REAL_USER" rm -rf "$WORKSHOP_DIR/$ITEM"
+                # Let root do the copying and deleting to avoid permission issues
+                cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
+                rm -rf "$WORKSHOP_DIR/$ITEM"
             fi
         done
     else
         echo "Warning: Workshop directory cannot be found ($WORKSHOP_DIR)"
     fi
-    chown -R "$REAL_USER" "$REAL_HOME/wallpaper"
+    
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/wallpaper"
     chmod -R 755 "$REAL_HOME/wallpaper"
 
     echo "Wallpapers are located at $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop skipped"
 fi
-
 # ==============================================================================
 # GRUB TWEAKS
 # ==============================================================================
