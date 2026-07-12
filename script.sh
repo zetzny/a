@@ -663,7 +663,6 @@ rainbow_user() {
     for ((i=0; i<${#user}; i++)); do
         local char="${user:$i:1}"
         local color="${colors[$((RANDOM % ${#colors[@]}))]}"
-        # Removed raw prompt escapes \[, \] here to fix the cursor bug
         out+=$'\001\033[1;'"${color}m"'\002'"${char}"
     done
     echo -ne "$out"
