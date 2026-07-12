@@ -207,7 +207,7 @@ if [ ! -f "/etc/snapper/configs/root" ]; then
 fi
 umount "$MNT_ROOT"
 
-# fstab Configurations
+# File System Table (fstab) Configurations
 FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0"
 FSTAB_SNAPSHOTS="UUID=$ROOT_UUID        /.snapshots            btrfs           rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,nofail,subvol=/@snapshots 0 0"
 
@@ -222,39 +222,62 @@ fi
 mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot is already mounted or busy"
 mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots is already mounted or busy"
 
-# Snapper Configuration File Adjustments
 SNAPPER_CONFIG_FILE="/etc/snapper/configs/root"
-sed -i 's/TIMELINE_LIMIT_HOURLY="[^"]*"/TIMELINE_LIMIT_HOURLY="0"/' /etc/snapper/configs/boot
-sed -i 's/TIMELINE_LIMIT_DAILY="[^"]*"/TIMELINE_LIMIT_DAILY="5"/' /etc/snapper/configs/boot
-sed -i 's/TIMELINE_LIMIT_WEEKLY="[^"]*"/TIMELINE_LIMIT_WEEKLY="0"/' /etc/snapper/configs/boot
-sed -i 's/TIMELINE_LIMIT_MONTHLY="[^"]*"/TIMELINE_LIMIT_MONTHLY="0"/' /etc/snapper/configs/boot
-sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
-sed -i \
-    -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
-    -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
-    -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
-    /etc/snapper/configs/root
-
-if [ ! -f "/etc/snapper/configs/boot" ]; then
-    snapper -c boot create-config /boot
-    sed -i 's/TIMELINE_LIMIT_HOURLY="[^"]*"/TIMELINE_LIMIT_HOURLY="0"/' /etc/snapper/configs/boot
-    sed -i 's/TIMELINE_LIMIT_DAILY="[^"]*"/TIMELINE_LIMIT_DAILY="5"/' /etc/snapper/configs/boot
-    sed -i 's/TIMELINE_LIMIT_WEEKLY="[^"]*"/TIMELINE_LIMIT_WEEKLY="0"/' /etc/snapper/configs/boot
-    sed -i 's/TIMELINE_LIMIT_MONTHLY="[^"]*"/TIMELINE_LIMIT_MONTHLY="0"/' /etc/snapper/configs/boot
-    sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
-    sed -i \
-    -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
-    -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
-    -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
-    /etc/snapper/configs/boot
-fi
-
 if [ -f "$SNAPPER_CONFIG_FILE" ]; then
+    sed -i \
+        -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
+        -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="20"/' \
+        -e 's/^NUMBER_LIMIT_IMPORTANT=.*/NUMBER_LIMIT_IMPORTANT="4"/' \
+        "$SNAPPER_CONFIG_FILE"
     sed -i "s/^ALLOW_USERS=.*/ALLOW_USERS=\"$REAL_USER\"/" "$SNAPPER_CONFIG_FILE"
     USER_GROUP=$(id -gn "$REAL_USER")
     sed -i "s/^ALLOW_GROUPS=.*/ALLOW_GROUPS=\"$USER_GROUP\"/" "$SNAPPER_CONFIG_FILE"
 else
     echo "⚠️ Error: Snapper 'root' config cannot be found at path: $SNAPPER_CONFIG_FILE"
+fi
+
+if [ ! -f "/etc/snapper/configs/boot" ]; then
+    if findmnt -n -o FSTYPE /boot | grep -q "btrfs"; then
+        echo " /boot is Btrfs. Setting up standard Snapper boot layout..."
+        snapper -c boot create-config /boot 2>/dev/null
+        
+        sed -i 's/TIMELINE_LIMIT_HOURLY="[^"]*"/TIMELINE_LIMIT_HOURLY="0"/' /etc/snapper/configs/boot
+        sed -i 's/TIMELINE_LIMIT_DAILY="[^"]*"/TIMELINE_LIMIT_DAILY="5"/' /etc/snapper/configs/boot
+        sed -i 's/TIMELINE_LIMIT_WEEKLY="[^"]*"/TIMELINE_LIMIT_WEEKLY="0"/' /etc/snapper/configs/boot
+        sed -i 's/TIMELINE_LIMIT_MONTHLY="[^"]*"/TIMELINE_LIMIT_MONTHLY="0"/' /etc/snapper/configs/boot
+        sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
+        sed -i -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' /etc/snapper/configs/boot
+    else
+        echo "💾 /boot is non-Btrfs (FAT32/ext4). Deploying automated Pacman boot-backup pre-hook..."
+        
+        # 1. Create the local script to mirror boot files into Btrfs root
+        mkdir -p /usr/local/bin
+        cat << 'EOF' > /usr/local/bin/boot-backup.sh
+#!/usr/bin/env bash
+mkdir -p /.boot-backup
+rsync -a --delete /boot/ /.boot-backup/
+EOF
+        chmod +x /usr/local/bin/boot-backup.sh
+
+        # 2. Deploy the automated PreTransaction Pacman Hook
+        mkdir -p /etc/pacman.d/hooks
+        cat << 'EOF' > /etc/pacman.d/hooks/95-boot-backup.hook
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Operation = Remove
+Type = Package
+Target = linux*
+
+[Action]
+Description = Mirroring /boot files to Btrfs root subvolume for fallback snapshots...
+When = PreTransaction
+Exec = /usr/local/bin/boot-backup.sh
+EOF
+        
+        /usr/local/bin/boot-backup.sh
+        echo "✅ Pre-transaction boot hook initialized successfully."
+    fi
 fi
 
 if [ -d "/.snapshots" ]; then
@@ -272,7 +295,6 @@ OnCalendar=
 OnCalendar=daily
 Persistent=true
 EOF
-
 # ==============================================================================
 # BSYSTEM SERVICES & FIREWALL 
 # ==============================================================================
@@ -563,14 +585,22 @@ rollback() {
     sudo snapper --ambit classic rollback "$target"
     local next=$((last + 2))
     echo "CONFIRM" | sudo snapper-rollback "$next"
-    local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
-    if [ -d "$boot_snapshot_dir" ]; then
-        echo "🔄 Detected backup for /boot ID #$target. Recovering boot files..."
-        sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
-        echo "✅ /boot successfully synchronized with snapshot #$target."
+    
+    # Smart Boot Synchronization Logic
+    if [ -d "/.boot-backup" ]; then
+        echo "🔄 Non-Btrfs layout detected. Syncing /boot with target snapshot modules..."
+        sudo rsync -axHAWXS --delete /.boot-backup/ /boot/
+        echo "✅ /boot successfully synchronized to historical kernel version."
     else
-        echo "⚠️ Warning: Backup /boot for ID #$target not found in $boot_snapshot_dir."
-        echo "Manual GRUB configuration changes may be required after reboot."
+        local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
+        if [ -d "$boot_snapshot_dir" ]; then
+            echo "🔄 Btrfs boot detected. Recovering boot files from snapper archive..."
+            sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
+            echo "✅ /boot successfully synchronized with snapshot #$target."
+        else
+            echo "⚠️ Warning: No boot backup layout found (neither /.boot-backup nor native Btrfs boot snapshot structure available)."
+            echo "Manual kernel sync or mkinitcpio generation may be required before rebooting."
+        fi
     fi
 }
 
@@ -656,3 +686,4 @@ echo "============================================================"
 echo "                   Installation complete!"
 echo "                         Restart PC"
 echo "============================================================"
+
