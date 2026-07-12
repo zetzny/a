@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# BLOCK 1: PRIVILEGES & ENVIRONMENT INITIALIZATION
+#  START
 # ==============================================================================
 if [[ "$EUID" -ne 0 ]]; then
     echo "❌ This script should be launched as root (using sudo)."
