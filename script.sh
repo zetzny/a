@@ -675,7 +675,7 @@ set_prompt() {
     local r_user=$(rainbow_user)
     
     # Added \n before the arrow to force the multi-line layout
-    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\]] | \[\033[1;${dir_color}m\]\W\[\033[0m\] |\n\[\033[1;${arrow_color}m\]-> \[\033[0m\] "
+    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\]] | \[\033[1;${dir_color}m\]\W\[\033[0m\] | \[\033[1;${arrow_color}m\]-> \[\033[0m\] "
 }
 
 PROMPT_COMMAND=set_prompt
