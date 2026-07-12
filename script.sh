@@ -672,7 +672,7 @@ set_prompt() {
     local arrow_color=$(get_random_color)
     local r_user=$(rainbow_user)
     
-    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\] \|\[\033[1;${dir_color}m\]\W\[\033[0m\]] \[\033[1;${arrow_color}m\]->\[\033[0m\] "
+    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\] | \[\033[1;${dir_color}m\]\W\[\033[0m\]] \[\033[1;${arrow_color}m\]->\[\033[0m\] "
 }
 PROMPT_COMMAND=set_prompt
 
