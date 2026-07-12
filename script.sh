@@ -663,19 +663,24 @@ rainbow_user() {
     for ((i=0; i<${#user}; i++)); do
         local char="${user:$i:1}"
         local color="${colors[$((RANDOM % ${#colors[@]}))]}"
-        out+="\[\033[1;${color}m\]${char}"
+        # Removed raw prompt escapes \[, \] here to fix the cursor bug
+        out+=$'\001\033[1;'"${color}m"'\002'"${char}"
     done
     echo -ne "$out"
 }
+
 set_prompt() {
     local host_color=$(get_random_color)
     local dir_color=$(get_random_color)
     local arrow_color=$(get_random_color)
     local r_user=$(rainbow_user)
     
-    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\] | \[\033[1;${dir_color}m\]\W\[\033[0m\]] \[\033[1;${arrow_color}m\]->\[\033[0m\] "
+    # Added \n before the arrow to force the multi-line layout
+    PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\]] | \[\033[1;${dir_color}m\]\W\[\033[0m\] |\n\[\033[1;${arrow_color}m\]-> \[\033[0m\] "
 }
+
 PROMPT_COMMAND=set_prompt
+
 
 [[ -r /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
 EOF
