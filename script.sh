@@ -29,7 +29,7 @@ AUR_PKGS=(
 #  PRIVILEGE & HARDWARE DETECTION
 # ==============================================================================
 if [[ "$EUID" -ne 0 ]]; then
-    echo "❌ This script should be launched as root (using sudo)."
+    echo " This script should be launched as root (using sudo)."
     exit 1
 fi
 
@@ -37,7 +37,7 @@ REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
 
 if [[ "$REAL_USER" == "root" ]]; then
-    echo "❌ Do not launch directly as root. Run: sudo ./script.sh"
+    echo " Do not launch directly as root. Run: sudo ./script.sh"
     exit 1
 fi
 
@@ -152,7 +152,6 @@ pacman -Syu --noconfirm
 pacman -S --needed --noconfirm base-devel git
 
 if ! command -v yay >/dev/null 2>&1; then
-    echo "🚀 Bootstrapping 'yay' AUR Helper..."
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
     sudo -u "$REAL_USER" bash -c "
@@ -163,7 +162,7 @@ if ! command -v yay >/dev/null 2>&1; then
     pacman -U --noconfirm "$TMP_DIR/yay"/*.pkg.tar.zst
     rm -rf "$TMP_DIR"
 else
-    echo "✅ 'yay' is already installed."
+    echo " 'yay' is already installed."
 fi
 # ==============================================================================
 #  INSTALLATION
@@ -274,7 +273,7 @@ When = PreTransaction
 Exec = /usr/local/bin/boot-backup.sh
 EOF
         /usr/local/bin/boot-backup.sh
-        echo "✅ Pre-transaction boot hook initialized successfully."
+        echo "Pre-transaction boot hook initialized successfully."
     fi
 fi
 
@@ -282,7 +281,7 @@ if [ -d "/.snapshots" ]; then
     chown -R :"$USER_GROUP" /.snapshots
     chmod 750 /.snapshots
 else
-    echo "⚠️ Warning: /.snapshots folder not found."
+    echo " Warning: /.snapshots folder not found."
 fi
 
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
@@ -572,7 +571,7 @@ clean() {
 
 rollback() {
     if [[ -z "${1:-}" ]]; then
-        echo "❌ Error: Enter snapshot number (example: rollback 69)"
+        echo "Error: Enter snapshot number (example: rollback 69)"
         return 1
     fi
     local target="$1"
@@ -580,7 +579,7 @@ rollback() {
     last=$(sudo snapper list | awk '$1 ~ /^[0-9]+$/ { id=$1 } END { print id }')
 
     if [[ ! "$last" =~ ^[0-9]+$ ]]; then
-        echo "❌ Error: Could not determine ID of last snapshot."
+        echo "Error: Could not determine ID of last snapshot."
         return 1
     fi
     sudo snapper --ambit classic rollback "$target"
