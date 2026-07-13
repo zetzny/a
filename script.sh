@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
+WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
+PKGS=(
+    base-devel bash-completion bluez bluez-utils btrfs-progs 
+    btrfsmaintenance cmake curl dkms dnsmasq 
+    docker git go grub-btrfs inotify-tools 
+    less mokutil nano ncdu network-manager-applet 
+    networkmanager noto-fonts noto-fonts-cjk noto-fonts-emoji 
+    openssh p7zip pacman-contrib pciutils power-profiles-daemon 
+    reflector rsync rust rust-src snap-pac 
+    snapper smartmontools steam ttf-dejavu ufw 
+    unzip wget which xz zram-generator 
+    zip zstd
+)
 
 # ==============================================================================
 #  START
@@ -26,7 +39,7 @@ else
     echo "❌ Supported only for Linux and linux-zen"
     exit 1
 fi
-
+sudo pacman -S "${KERNEL_HEADERS}"
 # Detect CPU Microcode
 CPU_UCODE=""
 if grep -q "AuthenticAMD" /proc/cpuinfo; then
@@ -76,7 +89,7 @@ if [[ "$HAS_AMD" -eq 1 && "$IS_ROCM_INSTALLED" -eq 0 ]]; then
     read -rp "Continue? [y/N]: " CONFIRM_ROCM
 fi
 # ==============================================================================
-# SYSTEM & PACKAGE MANAGER 
+# SYSTEM
 # ==============================================================================
 # Network sysctl tuning
 CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
@@ -109,7 +122,7 @@ if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
 
-# Update System and System Locales
+# System Locales
 sudo pacman -Syu --noconfirm
 sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
@@ -117,16 +130,8 @@ sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 
 # ==============================================================================
-#  CORE PACKAGE INSTALLATION & AUR SETUP
+#   AUR SETUP
 # ==============================================================================
-BASE_PKGS=(
-    base-devel git go reflector pacman-contrib bash-completion pciutils dkms
-    curl wget rsync unzip zip less xz zstd p7zip which nano ncdu openssh smartmontools
-    networkmanager network-manager-applet noto-fonts noto-fonts-cjk
-    noto-fonts-emoji ttf-dejavu "${KERNEL_HEADERS}"
-    steam rust cmake dnsmasq rust-src power-profiles-daemon
-)
-pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 
 # Install Yay if missing
 if ! command -v yay >/dev/null 2>&1; then
@@ -142,9 +147,6 @@ if ! command -v yay >/dev/null 2>&1; then
 else
     echo "yay already installed"
 fi
-
-# Install AUR Packages
-sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv xray-bin v2rayn
 
 # ==============================================================================
 # HARDWARE DRIVERS & KERNEL 
@@ -171,7 +173,8 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
         rm -rf "$BUILD_DIR"
     fi
 fi
-pacman -S --needed --noconfirm "${GPU_PKGS[@]}"
+sudo pacman -S --needed --noconfirm "${GPU_PKGS[@]}" "${PKGS[@]}"
+sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv xray-bin v2rayn
 
 # Regenerate Initramfs
 mkinitcpio -P
@@ -179,11 +182,6 @@ mkinitcpio -P
 # ==============================================================================
 #  BTRFS LAYOUT & SNAPPER SNAPSHOTS SETUP
 # ==============================================================================
-SYSTEM_PKGS=(
-    bluez bluez-utils docker snapper snap-pac grub-btrfs
-    btrfs-progs btrfsmaintenance ufw zram-generator inotify-tools mokutil
-)
-pacman -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
 
 ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
@@ -386,7 +384,6 @@ fi
 # STEAM WORKSHOP
 # ==============================================================================
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
-    WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
     STEAM_ARGS=(+run_script_at_dir /tmp +login "$STEAM_USER" "$STEAM_PASS")
 
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
@@ -446,6 +443,7 @@ fi
 # ==============================================================================
 #  USER ENVIRONMENT CONFIGURATION (.bashrc)
 # ==============================================================================
+cp "$REAL_HOME/.bashrc" "$REAL_HOME/.bashrc.bak"
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
 # ~/.bashrc
@@ -523,24 +521,34 @@ fset() {
 alias unpack='extract'
 extract() {
     if [[ ! -f "$1" ]]; then
-        echo "File not found"
+        echo "Error: '$1' is not a valid file" >&2
         return 1
     fi
-    case "$1" in
-        *.tar.bz2|*.tbz2) tar xf "$1" ;;
-        *.tar.gz|*.tgz)   tar xf "$1" ;;
-        *.tar.xz|*.txz)   tar xf "$1" ;;
-        *.tar.zst)        tar xf "$1" ;;
-        *.tar)            tar xf "$1" ;;
-        *.bz2)            bunzip2 "$1" ;;
-        *.rar)            unrar x "$1" ;;
-        *.gz)             gunzip "$1" ;;
-        *.zip)            unzip "$1" ;;
-        *.7z)             7z x "$1" ;;
-        *.xz)             unxz "$1" ;;
-        *.lzma)           unlzma "$1" ;;
-        *.zst)            unzstd "$1" ;;
-        *) echo "Unsupported archive format: $1" ;;
+
+    local file=$(basename "$1")
+    local ext="${file##*.}"
+    local ext_lc=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+    local filename_lc=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    case "$filename_lc" in
+        *.tar.bz2|*.tbz2|*.tbz) tar xjf "$1" ;;
+        *.tar.gz|*.tgz)         tar xzf "$1" ;;
+        *.tar.xz|*.txz)         tar xf "$1"  ;;
+        *.tar.zst|*.tzst)       tar xf "$1"  ;;
+        *.tar.lzma|*.tlz)       tar xf "$1"  ;;
+        *.tar)                  tar xf "$1"  ;;
+        *.bz2)                  bunzip2 -k "$1" ;; 
+        *.gz)                   gunzip -k "$1"  ;; 
+        *.xz)                   unxz -k "$1"    ;; 
+        *.lzma)                 unlzma -k "$1"  ;; 
+        *.zst)                  unzstd --keep "$1" ;;
+        *.zip|*.jar|*.war|*.apk) unzip "$1"   ;;
+        *.rar)                  unrar x "$1"  ;;
+        *.7z)                   7z x "$1"     ;;
+        *.deb)                  ar x "$1"     ;;
+        *.rpm)                  rpm2cpio "$1" | cpio -idmv ;;
+        *.z)                    uncompress "$1" ;;
+        *)                      echo "Unsupported archive format: '$1'" >&2; return 1 ;;
     esac
 }
 
@@ -561,15 +569,25 @@ nano() {
 
 # System Cleanup Wrapper
 clean() {
-    echo "🧹 Starting system cleanup..."
     if pacman -Qdtq >/dev/null 2>&1; then
         pacman -Qdtq | xargs -r sudo pacman -Rns
     fi
     sudo paccache -rk1
+    sudo paccache -ruk0
+    sudo pacman -Scc --noconfirm
+    yay -Sc --noconfirm
+    if command -v flatpak &> /dev/null; then
+        flatpak uninstall --unused -y
+    fi
+    if command -v gio &> /dev/null; then
+        gio trash --empty
+    else
+        rm -rf ~/.local/share/Trash/*
+    fi
     sudo journalctl --vacuum-time=3d
     rm -rf ~/.cache/*
-    echo "🗑️ Deleting broken symlinks..."
     find ~/.local/bin -xtype l -delete 2>/dev/null
+    find ~/.local/state/nvim/swap/ -type f -mtime +14 -delete 2>/dev/null
     systemctl --failed --all
 }
 
@@ -677,19 +695,13 @@ set_prompt() {
     local dir_color=$(get_random_color)
     local arrow_color=$(get_random_color)
     local r_user=$(rainbow_user)
-    
-    # Added \n before the arrow to force the multi-line layout
     PS1="[\[\033[1;${host_color}m\]\h\[\033[0m\]@${r_user}\[\033[0m\]] | \[\033[1;${dir_color}m\]\W\[\033[0m\] | \[\033[1;${arrow_color}m\]-> \[\033[0m\] "
 }
 
 PROMPT_COMMAND=set_prompt
-
-
 [[ -r /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
 EOF
-
 chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc"
-
 echo
 echo "============================================================"
 echo "                   Installation complete!"
