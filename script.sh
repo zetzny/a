@@ -175,7 +175,7 @@ if [[ -n "$CPU_UCODE" ]]; then PKG_LIST+=("$CPU_UCODE"); fi
 if [[ ${#GPU_PKGS[@]} -gt 0 ]]; then PKG_LIST+=("${GPU_PKGS[@]}"); fi
 
 if [[ "$HAS_AMD" -eq 1 && "$IS_ROCM_INSTALLED" -eq 0 && "$CONFIRM_ROCM" =~ ^[Yy]$ ]]; then
-    MASTER_PKG_LIST+=("rocm-bin")
+    PKG_LIST+=("rocm-bin")
 fi
 sudo -u "$REAL_USER" yay -S --needed --noconfirm "${PKG_LIST[@]}"
 
