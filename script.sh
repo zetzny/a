@@ -2,28 +2,52 @@
 # ==============================================================================
 #  PRESETS & PACKAGES DEFINITION
 # ==============================================================================
-WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
+# Variants for lovales also can be added by hand if needed
+# 0=German 1=English 2=Russian 3=Japanese 4=Chinese
+LOCALES_CHOOSEN=(0 1 2)
+
+WORKSHOP_ITEMS=(
+    3666255797
+    3357973751
+    3636094866
+    3682353804
+    3700132468
+) # wallpaper ids can you will find it in workshop
+GAME_ID=431960 #can be found in steam workshop this one for example is wallpaper engine
 
 # Core Pacman Packages 
 PACMAN_PKGS=(
-    base-devel bash-completion bluez bluez-utils btrfs-progs 
-    btrfsmaintenance cmake curl dkms dnsmasq 
-    docker git go grub-btrfs inotify-tools 
-    less mokutil nano ncdu network-manager-applet 
-    networkmanager noto-fonts noto-fonts-cjk noto-fonts-emoji 
-    openssh p7zip pacman-contrib pciutils power-profiles-daemon 
-    pipewire pipewire-audio pipewire-pulse wireplumber
-    reflector rsync rust rust-src snap-pac 
-    snapper smartmontools steam ttf-dejavu ufw 
-    unzip wget which xz zram-generator 
-    zip zstd
+    base-devel bash-completion bluez bluez-utils
+    btrfs-progs btrfsmaintenance cmake curl
+    dkms dnsmasq docker git
+    go grub-btrfs inotify-tools less
+    mokutil nano ncdu network-manager-applet
+    networkmanager noto-fonts noto-fonts-cjk noto-fonts-emoji
+    openssh p7zip pacman-contrib pciutils
+    power-profiles-daemon pipewire pipewire-audio pipewire-pulse
+    wireplumber reflector rsync rust
+    rust-src snap-pac snapper smartmontools
+    steam ttf-dejavu ufw unzip wget
+    which xz zram-generator zip zstd
 )
 
 # Core AUR Packages
 AUR_PKGS=(
-    steamcmd snapper-rollback zen-browser-bin zed 
-    gendesk uv xray-bin v2rayn
+    steamcmd snapper-rollback
+    zen-browser-bin zed
+    gendesk uv
+    xray-bin v2rayn
 )
+
+LOCALES=(
+    "s/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/"
+    "s/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/"
+    "s/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/"
+    "s/^#ja_JP.UTF-8 UTF-8/ja_JP.UTF-8 UTF-8/"
+    "s/^#zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/"
+) # structure is like "s/^#lang_LANG.format format/lang_LANG.format format/"
+# it can be found in /etc/locale.gen 
+# it will just remove # and regenerate locales
 
 # ==============================================================================
 #  PRIVILEGE & HARDWARE DETECTION
@@ -139,9 +163,9 @@ if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
 
-sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
-sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
+for  i in "${LOCALES_CHOOSEN[@]}"; do
+        sed -i "${LOCALES[i]}" /etc/locale.gen
+done
 locale-gen
 
 pacman -Syu --noconfirm
@@ -374,28 +398,28 @@ fi
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     STEAM_ARGS=(+run_script_at_dir /tmp +login "$STEAM_USER" "$STEAM_PASS")
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
-        STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
+        STEAM_ARGS+=(+workshop_download_item "${GAME_ID}" "$ITEM")
     done
     STEAM_ARGS+=(+quit)
-    
+
     (cd /tmp && sudo -H -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}")
-    
-    mkdir -p "$REAL_HOME/wallpaper"
-    WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/431960"
+
+    mkdir -p "$REAL_HOME/items"
+    WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/"${GAME_ID}""
 
     if [[ -d "$WORKSHOP_DIR" ]]; then
         for ITEM in "${WORKSHOP_ITEMS[@]}"; do
             if [[ -d "$WORKSHOP_DIR/$ITEM" ]]; then
-                cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
+                cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/items/"
                 rm -rf "$WORKSHOP_DIR/$ITEM"
             fi
         done
     else
         echo "Warning: Workshop directory cannot be found ($WORKSHOP_DIR)"
     fi
-    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/wallpaper"
-    chmod -R 755 "$REAL_HOME/wallpaper"
-    echo "Wallpapers are located at $REAL_HOME/wallpaper"
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/items"
+    chmod -R 755 "$REAL_HOME/items"
+    echo "Workshop items are located at $REAL_HOME/items"
 else
     echo "Steam Workshop skipped"
 fi
