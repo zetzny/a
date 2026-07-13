@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
+# ==============================================================================
+#  PRESETS & PACKAGES DEFINITION
+# ==============================================================================
 WORKSHOP_ITEMS=(3666255797 3357973751 3636094866 3682353804 3700132468)
-PKGS=(
+
+# Core Pacman Packages 
+PACMAN_PKGS=(
     base-devel bash-completion bluez bluez-utils btrfs-progs 
     btrfsmaintenance cmake curl dkms dnsmasq 
     docker git go grub-btrfs inotify-tools 
     less mokutil nano ncdu network-manager-applet 
     networkmanager noto-fonts noto-fonts-cjk noto-fonts-emoji 
     openssh p7zip pacman-contrib pciutils power-profiles-daemon 
+    pipewire pipewire-audio pipewire-pulse wireplumber
     reflector rsync rust rust-src snap-pac 
     snapper smartmontools steam ttf-dejavu ufw 
     unzip wget which xz zram-generator 
     zip zstd
 )
 
+# Core AUR Packages
+AUR_PKGS=(
+    steamcmd snapper-rollback zen-browser-bin zed 
+    gendesk uv xray-bin v2rayn
+)
+
 # ==============================================================================
-#  START
+#  PRIVILEGE & HARDWARE DETECTION
 # ==============================================================================
 if [[ "$EUID" -ne 0 ]]; then
     echo "❌ This script should be launched as root (using sudo)."
@@ -28,7 +40,9 @@ if [[ "$REAL_USER" == "root" ]]; then
     echo "❌ Do not launch directly as root. Run: sudo ./script.sh"
     exit 1
 fi
+
 # Detect Kernel Headers
+KERNEL_HEADERS=""
 if pacman -Q linux-zen >/dev/null 2>&1; then
     KERNEL_HEADERS="linux-zen-headers"
     echo "Linux-zen kernel detected"
@@ -39,7 +53,7 @@ else
     echo "❌ Supported only for Linux and linux-zen"
     exit 1
 fi
-sudo pacman -S "${KERNEL_HEADERS}"
+
 # Detect CPU Microcode
 CPU_UCODE=""
 if grep -q "AuthenticAMD" /proc/cpuinfo; then
@@ -73,7 +87,7 @@ if [[ "$HAS_AMD" -eq 1 ]]; then
 fi
 
 # ==============================================================================
-#  INTERACTIVE USER PROMPTS
+# INTERACTIVE USER PROMPTS
 # ==============================================================================
 # Steam Credentials Prompt
 read -rp "Steam login (leave empty to skip wallpaper install): " STEAM_USER
@@ -81,6 +95,7 @@ STEAM_PASS=""
 if [[ -n "$STEAM_USER" ]]; then
     read -rsp "Steam password: " STEAM_PASS
     echo
+    echo "Note: If you have Steam Guard (2FA) enabled, stay ready to allow login later"
 fi
 
 CONFIRM_ROCM="n"
@@ -88,12 +103,14 @@ if [[ "$HAS_AMD" -eq 1 && "$IS_ROCM_INSTALLED" -eq 0 ]]; then
     echo "ROCM not found. Install it?"
     read -rp "Continue? [y/N]: " CONFIRM_ROCM
 fi
+
 # ==============================================================================
-# SYSTEM
+# PRE-INSTALLATION SYSTEM CONFIGURATIONS & TUNING
 # ==============================================================================
+
 # Network sysctl tuning
 CONFIG_FILE="/etc/sysctl.d/99-network-opt.conf"
-sudo bash -c "cat << 'EOF' > $CONFIG_FILE
+bash -c "cat << 'EOF' > $CONFIG_FILE
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 net.core.rmem_max = 16777216
@@ -102,7 +119,7 @@ net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
 net.core.netdev_max_backlog = 1000
 EOF"
-sudo sysctl --system
+sysctl --system
 
 # Compilation (makepkg.conf)
 MAKEPKG_CONF="/etc/makepkg.conf"
@@ -122,19 +139,20 @@ if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
     sed -i '/^#\[multilib\]/,/^#Include/s/^#//' /etc/pacman.conf
 fi
 
-# System Locales
-sudo pacman -Syu --noconfirm
-sudo sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-sudo sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
-sudo sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
+sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+sed -i 's/^#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+sed -i 's/^#de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 
-# ==============================================================================
-#   AUR SETUP
-# ==============================================================================
+pacman -Syu --noconfirm
 
-# Install Yay if missing
+# ==============================================================================
+#  BOOTSTRAP YAY 
+# ==============================================================================
+pacman -S --needed --noconfirm base-devel git
+
 if ! command -v yay >/dev/null 2>&1; then
+    echo "🚀 Bootstrapping 'yay' AUR Helper..."
     TMP_DIR=$(mktemp -d)
     chown -R "$REAL_USER":"$REAL_USER" "$TMP_DIR"
     sudo -u "$REAL_USER" bash -c "
@@ -145,44 +163,31 @@ if ! command -v yay >/dev/null 2>&1; then
     pacman -U --noconfirm "$TMP_DIR/yay"/*.pkg.tar.zst
     rm -rf "$TMP_DIR"
 else
-    echo "yay already installed"
+    echo "✅ 'yay' is already installed."
 fi
-
 # ==============================================================================
-# HARDWARE DRIVERS & KERNEL 
+#  INSTALLATION
 # ==============================================================================
-# CPU Microcode
-if [[ -n "$CPU_UCODE" ]]; then
-    pacman -S --needed --noconfirm "$CPU_UCODE"
-fi
 
-# GPU Drivers & Optional ROCm Compilation
-if [[ "$HAS_AMD" -eq 1 ]]; then
-    if [[ "$IS_ROCM_INSTALLED" -eq 1 ]]; then
-        echo "✅ ROCm is already installed, skipping installation."
-    elif [[ "$CONFIRM_ROCM" =~ ^[Yy]$ ]]; then
-        START_DIR=$(pwd)
-        BUILD_DIR="${REAL_HOME}/rocm-bin-build"
-        rm -rf "$BUILD_DIR"
-        mkdir -p "$BUILD_DIR"
-        cd "$BUILD_DIR" || exit 1
-        git clone https://aur.archlinux.org/rocm-bin.git .
-        chown -R "$REAL_USER:$REAL_USER" "$BUILD_DIR"
-        (cd "$BUILD_DIR" && sudo -H -u "$REAL_USER" makepkg -si --noconfirm)
-        cd "$START_DIR" || cd "$REAL_HOME" || exit 1
-        rm -rf "$BUILD_DIR"
-    fi
+PKG_LIST=("${PACMAN_PKGS[@]}" "${AUR_PKGS[@]}")
+
+if [[ -n "$KERNEL_HEADERS" ]]; then PKG_LIST+=("$KERNEL_HEADERS"); fi
+if [[ -n "$CPU_UCODE" ]]; then PKG_LIST+=("$CPU_UCODE"); fi
+if [[ ${#GPU_PKGS[@]} -gt 0 ]]; then PKG_LIST+=("${GPU_PKGS[@]}"); fi
+
+if [[ "$HAS_AMD" -eq 1 && "$IS_ROCM_INSTALLED" -eq 0 && "$CONFIRM_ROCM" =~ ^[Yy]$ ]]; then
+    MASTER_PKG_LIST+=("rocm-bin")
 fi
-sudo pacman -S --needed --noconfirm "${GPU_PKGS[@]}" "${PKGS[@]}"
-sudo -u "$REAL_USER" yay -S --needed --noconfirm steamcmd snapper-rollback zen-browser-bin zed gendesk uv xray-bin v2rayn
+sudo -u "$REAL_USER" yay -S --needed --noconfirm "${PKG_LIST[@]}"
 
 # Regenerate Initramfs
 mkinitcpio -P
 
 # ==============================================================================
-#  BTRFS LAYOUT & SNAPPER SNAPSHOTS SETUP
+# BTRFS SETUP
 # ==============================================================================
 
+# --- BTRFS LAYOUT & SNAPPER SNAPSHOTS SETUP ---
 ROOT_DEV=$(findmnt -n -o SOURCE / | cut -d'[' -f1)
 ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEV")
 MNT_ROOT="/tmp/btrfs_top_level"
@@ -205,7 +210,6 @@ if [ ! -f "/etc/snapper/configs/root" ]; then
 fi
 umount "$MNT_ROOT"
 
-# File System Table (fstab) Configurations
 FSTAB_BTRFSROOT="UUID=$ROOT_UUID        /btrfsroot             btrfs           subvolid=5,defaults,noatime,nofail 0 0"
 FSTAB_SNAPSHOTS="UUID=$ROOT_UUID        /.snapshots            btrfs           rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,nofail,subvol=/@snapshots 0 0"
 
@@ -217,8 +221,8 @@ if ! grep -q "subvol=/@snapshots" /etc/fstab; then
     echo "$FSTAB_SNAPSHOTS" >> /etc/fstab
 fi
 
-mount /btrfsroot 2>/dev/null || echo "⚠️ /btrfsroot is already mounted or busy"
-mount /.snapshots 2>/dev/null || echo "⚠️ /.snapshots is already mounted or busy"
+mount /btrfsroot 2>/dev/null || echo " /btrfsroot is already mounted or busy"
+mount /.snapshots 2>/dev/null || echo " /.snapshots is already mounted or busy"
 
 SNAPPER_CONFIG_FILE="/etc/snapper/configs/root"
 if [ -f "$SNAPPER_CONFIG_FILE" ]; then
@@ -231,7 +235,7 @@ if [ -f "$SNAPPER_CONFIG_FILE" ]; then
     USER_GROUP=$(id -gn "$REAL_USER")
     sed -i "s/^ALLOW_GROUPS=.*/ALLOW_GROUPS=\"$USER_GROUP\"/" "$SNAPPER_CONFIG_FILE"
 else
-    echo "⚠️ Error: Snapper 'root' config cannot be found at path: $SNAPPER_CONFIG_FILE"
+    echo " Error: Snapper 'root' config cannot be found at path: $SNAPPER_CONFIG_FILE"
 fi
 
 if [ ! -f "/etc/snapper/configs/boot" ]; then
@@ -246,9 +250,7 @@ if [ ! -f "/etc/snapper/configs/boot" ]; then
         sed -i 's/TIMELINE_LIMIT_YEARLY="[^"]*"/TIMELINE_LIMIT_YEARLY="0"/' /etc/snapper/configs/boot
         sed -i -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' /etc/snapper/configs/boot
     else
-        echo "💾 /boot is non-Btrfs (FAT32/ext4). Deploying automated Pacman boot-backup pre-hook..."
-        
-        # 1. Create the local script to mirror boot files into Btrfs root
+        echo "/boot is non-Btrfs (FAT32/ext4). Deploying automated Pacman boot-backup pre-hook..."
         mkdir -p /usr/local/bin
         cat << 'EOF' > /usr/local/bin/boot-backup.sh
 #!/usr/bin/env bash
@@ -257,7 +259,6 @@ rsync -a --delete /boot/ /.boot-backup/
 EOF
         chmod +x /usr/local/bin/boot-backup.sh
 
-        # 2. Deploy the automated PreTransaction Pacman Hook
         mkdir -p /etc/pacman.d/hooks
         cat << 'EOF' > /etc/pacman.d/hooks/95-boot-backup.hook
 [Trigger]
@@ -272,7 +273,6 @@ Description = Mirroring /boot files to Btrfs root subvolume for fallback snapsho
 When = PreTransaction
 Exec = /usr/local/bin/boot-backup.sh
 EOF
-        
         /usr/local/bin/boot-backup.sh
         echo "✅ Pre-transaction boot hook initialized successfully."
     fi
@@ -282,10 +282,9 @@ if [ -d "/.snapshots" ]; then
     chown -R :"$USER_GROUP" /.snapshots
     chmod 750 /.snapshots
 else
-    echo "⚠️ Warning: /.snapshots folder not found. Snapshots may not have been created."
+    echo "⚠️ Warning: /.snapshots folder not found."
 fi
 
-# Snapper Systemd Cleanups
 mkdir -p /etc/systemd/system/snapper-cleanup.timer.d
 cat <<EOF > /etc/systemd/system/snapper-cleanup.timer.d/override.conf
 [Timer]
@@ -293,9 +292,8 @@ OnCalendar=
 OnCalendar=daily
 Persistent=true
 EOF
-# ==============================================================================
-# BSYSTEM SERVICES & FIREWALL 
-# ==============================================================================
+
+# --- SYSTEM SERVICES & FIREWALL SETUP ---
 systemctl daemon-reload
 systemctl disable --now snapper-timeline.timer || true
 systemctl enable --now snapper-cleanup.timer
@@ -309,7 +307,6 @@ systemctl restart snapper-cleanup.timer
 
 usermod -aG docker "$REAL_USER"
 
-# Firewall Profiles Setup
 ufw default deny incoming
 ufw default allow outgoing
 ufw --force enable
@@ -323,7 +320,7 @@ fi
 
 # ZRAM Swapping Setup
 ZRAM_CONF="/etc/systemd/zram-generator.conf"
-sudo bash -c "cat << 'EOF' > $ZRAM_CONF
+bash -c "cat << 'EOF' > $ZRAM_CONF
 [zram0]
 zram-size = ram
 compression-algorithm = zstd
@@ -332,9 +329,7 @@ EOF"
 systemctl daemon-reload
 systemctl enable --now systemd-zram-setup@zram0.service
 
-# ==============================================================================
-# AUDIO & BLUETOOTH 
-# ==============================================================================
+# --- BLUETOOTH CUSTOMIZATIONS ---
 BLUEZ_CONF="/etc/bluetooth/main.conf"
 update_bluez_param() {
     local param="$1"
@@ -348,58 +343,50 @@ update_bluez_param() {
 update_bluez_param "Experimental" "true"
 update_bluez_param "FastConnectable" "true"
 update_bluez_param "MultiProfile" "multiple"
-sudo rfkill unblock bluetooth
+rfkill unblock bluetooth
 systemctl restart bluetooth
 
-# Wireplumber 
-if command -v wireplumber >/dev/null 2>&1; then
-    WP_DIR="$REAL_HOME/.config/wireplumber/wireplumber.conf.d"
-    sudo -u "$REAL_USER" mkdir -p "$WP_DIR"
-    cat > "$WP_DIR/51-bluetooth-fix.conf" <<EOF
+# Wireplumber Configuration
+WP_DIR="$REAL_HOME/.config/wireplumber/wireplumber.conf.d"
+sudo -u "$REAL_USER" mkdir -p "$WP_DIR"
+cat > "$WP_DIR/51-bluetooth-fix.conf" <<EOF
 monitor.bluez.properties = {
     bluez5.suspend-on-idle = false
     bluetooth.autoswitch-to-headset = false
 }
 EOF
-    chown "$REAL_USER":"$REAL_USER" "$WP_DIR/51-bluetooth-fix.conf"
-fi
+chown "$REAL_USER":"$REAL_USER" "$WP_DIR/51-bluetooth-fix.conf"
 
-# Pipewire 
-if command -v pipewire >/dev/null 2>&1; then
-    PW_DIR="$REAL_HOME/.config/pipewire/pipewire.conf.d"
-    sudo -u "$REAL_USER" mkdir -p "$PW_DIR"
-    cat > "$PW_DIR/99-input-latency.conf" <<EOF
+# Pipewire Configuration
+PW_DIR="$REAL_HOME/.config/pipewire/pipewire.conf.d"
+sudo -u "$REAL_USER" mkdir -p "$PW_DIR"
+cat > "$PW_DIR/99-input-latency.conf" <<EOF
 context.properties = {
     default.clock.min-quantum = 1024
 }
 EOF
-    chown "$REAL_USER":"$REAL_USER" "$PW_DIR/99-input-latency.conf"
-fi
+chown "$REAL_USER":"$REAL_USER" "$PW_DIR/99-input-latency.conf"
 
 if [ -n "$REAL_USER" ]; then
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="/run/user/$(id -u $REAL_USER)" systemctl --user restart pipewire wireplumber pipewire-pulse
 fi
 
-# ==============================================================================
-# STEAM WORKSHOP
-# ==============================================================================
+# --- STEAM WORKSHOP ASSETS ---
 if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     STEAM_ARGS=(+run_script_at_dir /tmp +login "$STEAM_USER" "$STEAM_PASS")
-
     for ITEM in "${WORKSHOP_ITEMS[@]}"; do
         STEAM_ARGS+=(+workshop_download_item 431960 "$ITEM")
     done
     STEAM_ARGS+=(+quit)
+    
     (cd /tmp && sudo -H -u "$REAL_USER" steamcmd "${STEAM_ARGS[@]}")
     
     mkdir -p "$REAL_HOME/wallpaper"
-
     WORKSHOP_DIR="$REAL_HOME/.steam/SteamApps/workshop/content/431960"
 
     if [[ -d "$WORKSHOP_DIR" ]]; then
         for ITEM in "${WORKSHOP_ITEMS[@]}"; do
             if [[ -d "$WORKSHOP_DIR/$ITEM" ]]; then
-                # Let root do the copying and deleting to avoid permission issues
                 cp -r "$WORKSHOP_DIR/$ITEM" "$REAL_HOME/wallpaper/"
                 rm -rf "$WORKSHOP_DIR/$ITEM"
             fi
@@ -407,17 +394,14 @@ if [[ -n "$STEAM_USER" && -n "$STEAM_PASS" ]]; then
     else
         echo "Warning: Workshop directory cannot be found ($WORKSHOP_DIR)"
     fi
-    
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/wallpaper"
     chmod -R 755 "$REAL_HOME/wallpaper"
-
     echo "Wallpapers are located at $REAL_HOME/wallpaper"
 else
     echo "Steam Workshop skipped"
 fi
-# ==============================================================================
-# GRUB TWEAKS
-# ==============================================================================
+
+# --- GRUB TWEAKS ---
 GRUB_CONFIG="/etc/default/grub"
 cp "$GRUB_CONFIG" "${GRUB_CONFIG}.bak"
 echo "[+] Backup created: ${GRUB_CONFIG}.bak"
@@ -440,15 +424,15 @@ else
     echo "Error: Folder /boot/grub not found. Check where GRUB is installed."
 fi
 
-# ==============================================================================
-#  USER ENVIRONMENT CONFIGURATION (.bashrc)
-# ==============================================================================
-cp "$REAL_HOME/.bashrc" "$REAL_HOME/.bashrc.bak"
+# --- USER ENVIRONMENT CONFIGURATION (.bashrc) ---
+if [[ -f "$REAL_HOME/.bashrc" && ! -f "$REAL_HOME/.bashrc.bak" ]]; then
+    cp "$REAL_HOME/.bashrc" "$REAL_HOME/.bashrc.bak"
+fi
+
 cat << 'EOF' > "$REAL_HOME/.bashrc"
 # ==========================================================
 # ~/.bashrc
 # ==========================================================
-
 [[ $- != *i* ]] && return
 
 export PATH="$HOME/.local/bin:$PATH"
@@ -500,7 +484,6 @@ mkcd() { mkdir -p "$1" && cd "$1"; }
 ports() { ss -tulpn; }
 myip() { curl -s ifconfig.me; }
 
-# Permissions manager
 fset() {
     if [ "$#" -eq 2 ]; then
         sudo chmod "$1" "$2"
@@ -517,14 +500,12 @@ fset() {
     fi
 }
 
-# Archive Extraction Utilit
 alias unpack='extract'
 extract() {
     if [[ ! -f "$1" ]]; then
         echo "Error: '$1' is not a valid file" >&2
         return 1
     fi
-
     local file=$(basename "$1")
     local ext="${file##*.}"
     local ext_lc=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
@@ -552,7 +533,6 @@ extract() {
     esac
 }
 
-# Auto Sudo-Nano Wrapper
 nano() {
     if [[ $# -eq 0 ]]; then
         command nano
@@ -567,7 +547,6 @@ nano() {
     fi
 }
 
-# System Cleanup Wrapper
 clean() {
     if pacman -Qdtq >/dev/null 2>&1; then
         pacman -Qdtq | xargs -r sudo pacman -Rns
@@ -591,7 +570,6 @@ clean() {
     systemctl --failed --all
 }
 
-# Snapper Rollback
 rollback() {
     if [[ -z "${1:-}" ]]; then
         echo "❌ Error: Enter snapshot number (example: rollback 69)"
@@ -609,30 +587,24 @@ rollback() {
     local next=$((last + 2))
     echo "CONFIRM" | sudo snapper-rollback "$next"
     
-    # Smart Boot Synchronization Logic
     if [ -d "/.boot-backup" ]; then
-        echo "🔄 Non-Btrfs layout detected. Syncing /boot with target snapshot modules..."
+        echo "Non-Btrfs layout detected. Syncing /boot with target snapshot modules..."
         sudo rsync -axHAWXS --delete /.boot-backup/ /boot/
-        echo "✅ /boot successfully synchronized to historical kernel version."
+        echo "/boot successfully synchronized to historical kernel version."
     else
         local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
         if [ -d "$boot_snapshot_dir" ]; then
-            echo "🔄 Btrfs boot detected. Recovering boot files from snapper archive..."
+            echo " Btrfs boot detected. Recovering boot files from snapper archive..."
             sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
-            echo "✅ /boot successfully synchronized with snapshot #$target."
+            echo " /boot successfully synchronized with snapshot #$target."
         else
-            echo "⚠️ Warning: No boot backup layout found (neither /.boot-backup nor native Btrfs boot snapshot structure available)."
-            echo "Manual kernel sync or mkinitcpio generation may be required before rebooting."
+            echo " Warning: No boot backup layout found."
         fi
     fi
 }
 
-# RAM/VRAM Diagnostics
 mem() {
     echo "═══════════════════════════════════════"
-    echo "  📊 MEMORY STATUS"
-    echo "═══════════════════════════════════════"
-    echo ""
     echo "🔹 RAM (System Memory):"
     free -b | awk '
     function f(b) {
@@ -672,7 +644,6 @@ mem() {
     echo "═══════════════════════════════════════"
 }
 
-# Prompt
 get_random_color() {
     local colors=(31 32 33 34 35 36 91 92 93 94 95 96)
     echo "${colors[$((RANDOM % ${#colors[@]}))]}"
@@ -702,9 +673,9 @@ PROMPT_COMMAND=set_prompt
 [[ -r /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
 EOF
 chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.bashrc"
+
 echo
 echo "============================================================"
 echo "                   Installation complete!"
 echo "                         Restart PC"
 echo "============================================================"
-
