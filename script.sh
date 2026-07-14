@@ -284,7 +284,7 @@ if [ ! -f "/etc/snapper/configs/boot" ]; then
 #!/usr/bin/env bash
 if mountpoint -q /boot; then
     mkdir -p /boot-backup
-    rsync -aHAWXS --delete /boot/ /boot-backup/
+    rsync -rtplod --delete /boot/ /boot-backup/
     echo "Pre-transaction backup of /boot to /boot-backup successful."
 else
     echo "Error: /boot is not mounted. Skipping backup." >&2
@@ -612,17 +612,24 @@ rollback() {
         return 1
     fi
     local target="$1"
-    local last
-    last=$(sudo snapper list | awk '$1 ~ /^[0-9]+$/ { id=$1 } END { print id }')
 
-    if [[ ! "$last" =~ ^[0-9]+$ ]]; then
-        echo "Error: Could not determine ID of last snapshot."
+   echo "Creating read-write clone of snapshot #$target..."
+    if ! sudo snapper --ambit classic rollback "$target"; then
+        echo "Error: Native snapper rollback failed."
+        return 1
+    fi
+
+    next=$(sudo snapper list | awk '$1 ~ /^[0-9]+$/ { id=$1 } END { print id }')
+
+    if [[ ! "$next" =~ ^[0-9]+$ ]]; then
+        echo "Error: Could not determine ID of the newly created read-write clone."
         return 1
     fi
     
-    sudo snapper --ambit classic rollback "$target"
-    local next=$((last + 2))
-    echo "CONFIRM" | sudo snapper-rollback "$next"
+    if ! echo "CONFIRM" | sudo snapper-rollback "$next"; then
+        echo "Error: snapper-rollback failed to swap subvolumes."
+        return 1
+    fi
     
     if ! mountpoint -q /boot; then
         echo "Mounting /boot..."
@@ -633,12 +640,12 @@ rollback() {
     
     if [ -d "$target_snapshot_dir/boot-backup" ]; then
         echo "Non-Btrfs layout detected. Restoring matching historical kernel from snapshot #$target..."
-        sudo rsync -axHAWXS --delete "$target_snapshot_dir/boot-backup/" /boot/
+        sudo rsync -rtplod --delete "$target_snapshot_dir/boot-backup/" /boot/
         echo "/boot successfully synchronized to kernel matching snapshot #$target."
         sudo grub-mkconfig -o /boot/grub/grub.cfg
     elif [ -d "$target_snapshot_dir/boot" ]; then
         echo "Btrfs boot detected. Recovering boot files from snapper archive..."
-        sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$target_snapshot_dir/boot/" /boot/
+        sudo rsync -rtplod --delete --exclude="/.snapshots" "$target_snapshot_dir/boot/" /boot/
         echo "/boot successfully synchronized with snapshot #$target."
         sudo grub-mkconfig -o /boot/grub/grub.cfg
     else
