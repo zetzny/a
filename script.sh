@@ -274,6 +274,11 @@ if [ ! -f "/etc/snapper/configs/boot" ]; then
         sed -i -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' /etc/snapper/configs/boot
     else
         echo "/boot is non-Btrfs (FAT32/ext4). Deploying automated Pacman boot-backup pre-hook..."
+        if grep -q "^#\s*HookDir" /etc/pacman.conf; then
+            sed -i '/^#\s*HookDir/s/^#\s*//' /etc/pacman.conf
+        elif ! grep -q "^HookDir" /etc/pacman.conf; then
+            sed -i '/^\[options\]/a HookDir = /etc/pacman.d/hooks/' /etc/pacman.conf
+        fi
         mkdir -p /usr/local/bin
         cat << 'EOF' > /usr/local/bin/boot-backup.sh
 #!/usr/bin/env bash
