@@ -609,19 +609,24 @@ rollback() {
     sudo snapper --ambit classic rollback "$target"
     local next=$((last + 2))
     echo "CONFIRM" | sudo snapper-rollback "$next"
-    
+    if ! mountpoint -q /boot; then
+        echo "Mounting /boot..."
+        sudo mount /boot || { echo "Error: Failed to mount /boot"; return 1; }
+    fi
     if [ -d "/.boot-backup" ]; then
         echo "Non-Btrfs layout detected. Syncing /boot with target snapshot modules..."
         sudo rsync -axHAWXS --delete /.boot-backup/ /boot/
         echo "/boot successfully synchronized to historical kernel version."
+        sudo grub-mkconfig -o /boot/grub/grub.cfg
     else
         local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
         if [ -d "$boot_snapshot_dir" ]; then
-            echo " Btrfs boot detected. Recovering boot files from snapper archive..."
+            echo "Btrfs boot detected. Recovering boot files from snapper archive..."
             sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
-            echo " /boot successfully synchronized with snapshot #$target."
+            echo "/boot successfully synchronized with snapshot #$target."
+            sudo grub-mkconfig -o /boot/grub/grub.cfg
         else
-            echo " Warning: No boot backup layout found."
+            echo "Warning: No boot backup layout found. You may need to update GRUB manually."
         fi
     fi
 }
