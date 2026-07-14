@@ -277,8 +277,14 @@ if [ ! -f "/etc/snapper/configs/boot" ]; then
         mkdir -p /usr/local/bin
         cat << 'EOF' > /usr/local/bin/boot-backup.sh
 #!/usr/bin/env bash
-mkdir -p /.boot-backup
-rsync -a --delete /boot/ /.boot-backup/
+if mountpoint -q /boot; then
+    mkdir -p /boot-backup
+    rsync -aHAWXS --delete /boot/ /boot-backup/
+    echo "Pre-transaction backup of /boot to /boot-backup successful."
+else
+    echo "Error: /boot is not mounted. Skipping backup." >&2
+    exit 1
+fi
 EOF
         chmod +x /usr/local/bin/boot-backup.sh
 
@@ -290,9 +296,11 @@ Operation = Install
 Operation = Remove
 Type = Package
 Target = linux*
+Target = amd-ucode
+Target = intel-ucode
 
 [Action]
-Description = Mirroring /boot files to Btrfs root subvolume for fallback snapshots...
+Description = Saving current boot files to Btrfs root before system changes...
 When = PreTransaction
 Exec = /usr/local/bin/boot-backup.sh
 EOF
@@ -606,28 +614,30 @@ rollback() {
         echo "Error: Could not determine ID of last snapshot."
         return 1
     fi
+    
     sudo snapper --ambit classic rollback "$target"
     local next=$((last + 2))
     echo "CONFIRM" | sudo snapper-rollback "$next"
+    
     if ! mountpoint -q /boot; then
         echo "Mounting /boot..."
         sudo mount /boot || { echo "Error: Failed to mount /boot"; return 1; }
     fi
-    if [ -d "/.boot-backup" ]; then
-        echo "Non-Btrfs layout detected. Syncing /boot with target snapshot modules..."
-        sudo rsync -axHAWXS --delete /.boot-backup/ /boot/
-        echo "/boot successfully synchronized to historical kernel version."
+    
+    local target_snapshot_dir="/.snapshots/$target/snapshot"
+    
+    if [ -d "$target_snapshot_dir/boot-backup" ]; then
+        echo "Non-Btrfs layout detected. Restoring matching historical kernel from snapshot #$target..."
+        sudo rsync -axHAWXS --delete "$target_snapshot_dir/boot-backup/" /boot/
+        echo "/boot successfully synchronized to kernel matching snapshot #$target."
+        sudo grub-mkconfig -o /boot/grub/grub.cfg
+    elif [ -d "$target_snapshot_dir/boot" ]; then
+        echo "Btrfs boot detected. Recovering boot files from snapper archive..."
+        sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$target_snapshot_dir/boot/" /boot/
+        echo "/boot successfully synchronized with snapshot #$target."
         sudo grub-mkconfig -o /boot/grub/grub.cfg
     else
-        local boot_snapshot_dir="/boot/.snapshots/$target/snapshot"
-        if [ -d "$boot_snapshot_dir" ]; then
-            echo "Btrfs boot detected. Recovering boot files from snapper archive..."
-            sudo rsync -axHAWXS --delete --exclude="/.snapshots" "$boot_snapshot_dir/" /boot/
-            echo "/boot successfully synchronized with snapshot #$target."
-            sudo grub-mkconfig -o /boot/grub/grub.cfg
-        else
-            echo "Warning: No boot backup layout found. You may need to update GRUB manually."
-        fi
+        echo "Warning: No boot backup layout found in snapshot #$target. You may need to rebuild initramfs manually."
     fi
 }
 
